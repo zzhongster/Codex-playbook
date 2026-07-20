@@ -2,7 +2,7 @@
 
 ## 一句话结论
 
-`open -W -n App.app --args ...` 适合经 LaunchServices 启动 GUI 应用，但不应当作严格 CLI 探针的退出码和 stderr oracle；正式取证要直接运行已签名 bundle executable，或设计显式结果通道。
+`open -W -n App.app --args ...` 适合经 LaunchServices 启动 GUI 应用，但不应当作严格 CLI 探针的退出码和 stderr oracle；需要真实 `.app` 身份的 TCC 实验应通过 LaunchServices 启动，并以显式结果文件作为唯一结论通道。
 
 ## 场景
 
@@ -21,10 +21,11 @@
 
 ## 正确做法
 
-- 需要严格 status 时，直接执行 `App.app/Contents/MacOS/<Executable>`，仍然使用同一已签名二进制。
+- 普通 CLI 探针需要严格 status 时，可直接执行 `App.app/Contents/MacOS/<Executable>`；但先确认实验不依赖 LaunchServices/TCC 对应用身份的归因。
+- 权限实验必须按用户真实启动方式运行 `.app`。如果直接 Mach-O 和 LaunchServices 观测到不同 TCC 状态，禁止混入同一矩阵。
 - 应用内部只有一个 terminal-status owner，AppKit termination 从该状态退出。
 - stdout/stderr、report verdict 和 shell exit code 三者交叉校验。
-- 若必须经 LaunchServices，使用显式 IPC/result file，并把 launcher 结果仅视为“已请求启动”。
+- 若必须经 LaunchServices，使用带 schema 和原子发布的 result file，并把 launcher 的 0 仅视为“已请求启动/应用已结束”，不能视为 probe PASS。
 - 每次结束检查无残留 probe process。
 
 ## 验证清单
@@ -33,4 +34,4 @@
 - report conclusion 与 shell status 一致。
 - Quit/termination 路径保留此前失败 status。
 - 失败 bundle 在进程退出前原子完成。
-
+- 权限报告记录 bundle ID、签名二进制哈希、启动方式和请求前后状态。
