@@ -2,7 +2,7 @@
 
 ## 一句话结论
 
-捕获、麦克风、混音器和 writer 的 post-`t0` 失败必须进入一个一次性 session-health 通道；仅记日志或让局部组件停止，会发布看似成功但内容残缺的文件。
+捕获、混音器和 writer 等终止性 post-`t0` 失败必须进入一次性 session-health 通道；允许降级的来源也必须路由到会话所有者，但要使用独立 source-health 通道，由会话策略决定降级还是终止。
 
 ## 场景
 
@@ -21,7 +21,9 @@
 
 ## 正确做法
 
-- 向 writer、mixer、screen 和 microphone 注入同一个 one-shot health channel。
+- 向 writer、mixer、screen 注入同一个 terminal one-shot health channel。
+- 对产品允许降级的来源（例如有系统声音兜底的麦克风）注入独立 source-health channel；会话所有者收到后关闭该来源、解除混音 watermark，并向用户显示非模态警告。
+- 如果唯一音频来源失败，可让混音器在收尾时补静音到 `t1`；如果产品不允许无声继续，则把该 source-health 提升为 terminal failure。
 - 只接受并保存第一个运行时失败。
 - 会话正式 admission 后立刻启动 watcher；`t0` 边界期间已缓冲的失败也会马上被看见。
 - P0 策略明确 fail closed：取消并保留临时文件，不发布 partial output。
@@ -30,6 +32,7 @@
 ## 验证清单
 
 - 分别注入 stream stop、设备变化、mixer failure、video/audio append failure。
+- 同时覆盖“麦克风是唯一音频源”和“麦克风 + 系统声音”两种降级路径。
 - 每个用例只产生一次 session finalization。
 - 失败会话不执行原子 publish。
 - cancellation 与真正 runtime failure 保持不同错误类型。
@@ -39,4 +42,3 @@
 
 - [多重录制收尾所有者](multiple-recording-finalization-owners.md)
 - [停止截止点与事件 admission 未线性化](stop-cutoff-and-event-admission-are-not-linearized.md)
-
