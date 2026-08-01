@@ -18,6 +18,8 @@ Use a two-layer production model:
 
 For designed explanation pages, use staged motion rather than static slides: reveal titles, cards, keyword chips, feature buttons, and process nodes in the order the narration introduces them. This makes the video feel closer to a polished product launch or Keynote presentation while preserving clarity.
 
+When adding a cover, make the first video frame a complete branded cover and export a standalone cover image. If the cover is inserted before a finished narration timeline, shift the content scenes, subtitles, and audio later by the cover duration instead of compressing the original video. Do not apply an outer fade-in to the cover scene; group chats and video players may use frame 0 as the preview image.
+
 ## Why It Works
 
 Clean recordings keep product evidence authentic and reusable. Composition-layer highlights make visual corrections cheap because bad highlight positions do not require re-recording. Stable-state clips prevent repeated operations and avoid flicker when the narration is explaining results rather than interactions.
@@ -28,6 +30,7 @@ Clean recordings keep product evidence authentic and reusable. Composition-layer
 - Result-table proof should use stable table clips.
 - Highlights should be overlaid after recording and checked by timestamped keyframes.
 - Static design pages should have subtle staged reveals and follow the voiceover order.
+- Cover frame 0 should be complete, nonblank, and exported as a standalone image when useful.
 - Voice scene changes should happen at or before the spoken topic shift.
 - Subtitles should not obscure the UI being demonstrated.
 - Credentials and TTS/API keys must stay local and never appear in outputs.
