@@ -67,6 +67,7 @@ Codex-playbook/
 | [源码文本审计代替行为证明](anti-patterns/source-text-audit-used-as-behavior-proof.md) | 静态审计守窄边界，竞态与状态机必须执行生产 seam |
 | [未约束标签插入 verdict 报告](anti-patterns/untrusted-label-in-human-readable-verdict.md) | 结构化字段决定 gate，自由文本不能伪造 PASS 行 |
 | [工具链故障冒充 TDD RED](anti-patterns/toolchain-failure-mistaken-for-feature-red.md) | RED 必须落在业务契约，不是 framework、fixture 或 SDK 故障 |
+| [把多栏 PDF 的文本顺序当成记录边界](anti-patterns/multi-column-pdf-contact-misattribution.md) | 联系人必须在同一页面、栏位和条目边界内归属，不能按扁平文本中的名称邻近关系配对 |
 
 ## Experiments
 
