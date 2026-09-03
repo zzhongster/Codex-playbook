@@ -8,15 +8,10 @@ import re
 from urllib.parse import unquote, urlsplit
 
 
-_SECRET_KEY = re.compile(
-    r"(?i)^(?:password|passwd|password[_-]?hash|pwd|secret|"
-    r"client[_-]?secret|token|(?:access|refresh|id)[_-]?token|"
-    r"api[_-]?key|apikey|credential|credentials|private[_-]?key|"
-    r"connection[_-]?string)$"
-)
-_CREDENTIAL_VALUE = re.compile(
-    r"(?i)(?:\b(?:password|passwd|secret|(?:access[ _-]?)?token|api[ _-]?key)\b"
-    r"\s*[:=]\s*[\"']?[A-Za-z0-9._~+/-]{6,})"
+_CREDENTIAL_ASSIGNMENT = re.compile(
+    r"(?i)(?<![a-z0-9])"
+    r"(?P<label>[a-z][a-z0-9_-]*(?:[ \t]+[a-z][a-z0-9_-]*){0,4})"
+    r"[ \t]*[:=][ \t]*[\"']?(?P<value>[^\s;,\"']+)"
 )
 _AUTHORIZATION_HEADER = re.compile(
     r"(?i)\bauthorization\s*[:=]\s*[a-z][a-z0-9._~-]{0,31}\s+\S+"
@@ -36,10 +31,6 @@ _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
 _AWS_ACCESS_KEY = re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")
 _TOKEN_PREFIX = re.compile(
     r"\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})\b"
-)
-_CONNECTION_STRING_CREDENTIAL = re.compile(
-    r"(?i)(?:^|;)\s*(?:user\s+id|uid|pwd|password|client\s+secret)"
-    r"\s*=\s*[^;\s][^;]*"
 )
 _PEM_PRIVATE_KEY = re.compile(
     r"-----BEGIN (?:EC |ENCRYPTED |OPENSSH |RSA )?PRIVATE KEY-----"
@@ -169,6 +160,67 @@ _RESERVED_IPV4 = tuple(
     for network in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24")
 )
 _RESERVED_IPV6 = ipaddress.ip_network("2001:db8::/32")
+
+
+def _normalize_label(label):
+    separated_acronyms = re.sub(
+        r"([A-Z]+)([A-Z][a-z])", r"\1_\2", str(label)
+    )
+    separated_camel = re.sub(
+        r"([a-z0-9])([A-Z])", r"\1_\2", separated_acronyms
+    )
+    return re.sub(r"[^a-z0-9]+", "_", separated_camel.lower()).strip("_")
+
+
+def _is_secret_label(label):
+    normalized = _normalize_label(label)
+    tokens = normalized.split("_") if normalized else []
+    if tokens and tokens[-1] in {
+        "credential",
+        "credentials",
+        "passwd",
+        "password",
+        "pwd",
+        "token",
+    }:
+        return True
+    if normalized in {"apikey", "uid", "user_id"}:
+        return True
+    if normalized.endswith(
+        (
+            "api_key",
+            "account_key",
+            "private_key",
+            "connection_string",
+            "password_hash",
+        )
+    ):
+        return True
+    return "secret" in tokens and (
+        tokens[-1] == "secret" or "key" in tokens[tokens.index("secret") + 1 :]
+    )
+
+
+def _is_safe_secret_placeholder(value):
+    if value is None:
+        return True
+    if not isinstance(value, str):
+        return False
+    normalized = value.strip()
+    return bool(
+        not normalized
+        or _FICTIONAL_MARKER.search(normalized)
+        or normalized.lower()
+        in {"<redacted>", "[redacted]", "redacted", "not-applicable", "not-set"}
+    )
+
+
+def _has_credential_assignment(value):
+    return any(
+        _is_secret_label(match.group("label"))
+        and not _is_safe_secret_placeholder(match.group("value"))
+        for match in _CREDENTIAL_ASSIGNMENT.finditer(value)
+    )
 
 
 def _reserved_host(host):
@@ -318,12 +370,11 @@ def _four_part_version_literal(value, path_keys):
 def _string_safety_errors(value, path, path_keys):
     errors = []
     if (
-        _CREDENTIAL_VALUE.search(value)
+        _has_credential_assignment(value)
         or _has_authorization_credential_syntax(value)
         or _JWT.search(value)
         or _AWS_ACCESS_KEY.search(value)
         or _TOKEN_PREFIX.search(value)
-        or _CONNECTION_STRING_CREDENTIAL.search(value)
         or _PEM_PRIVATE_KEY.search(value)
     ):
         errors.append(f"{path}: credential-like value")
@@ -424,7 +475,9 @@ def fixture_safety_errors(value):
             for key, nested in child.items():
                 key_text = str(key)
                 child_path = f"{path}.{key_text}"
-                if _SECRET_KEY.fullmatch(key_text):
+                if _is_secret_label(key_text) and not _is_safe_secret_placeholder(
+                    nested
+                ):
                     errors.append(f"{child_path}: secret-shaped key")
                 if (
                     _AUTHORIZATION_FIELD.fullmatch(key_text)

@@ -155,6 +155,7 @@
     },
     "versionScope": {
       "type": "object",
+      "x-valid-time-window": true,
       "additionalProperties": false,
       "required": [
         "product_version",

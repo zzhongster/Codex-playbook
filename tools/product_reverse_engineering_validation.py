@@ -57,6 +57,33 @@ def create_schema_registry(schemas):
     return Registry(retrieve=reject_remote_retrieval).with_resources(resources)
 
 
+def _parse_timestamp(value):
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, OverflowError):
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed
+
+
+def valid_time_window(validator, enabled, instance, schema):
+    if not enabled or not isinstance(instance, dict):
+        return
+    valid_from_value = instance.get("valid_from")
+    valid_to_value = instance.get("valid_to")
+    valid_from = _parse_timestamp(valid_from_value)
+    valid_to = _parse_timestamp(valid_to_value)
+    if isinstance(valid_from_value, str) and valid_from is None:
+        yield ValidationError("valid_from must be a timezone-aware timestamp")
+    if isinstance(valid_to_value, str) and valid_to is None:
+        yield ValidationError("valid_to must be a timezone-aware timestamp or null")
+    if valid_from is not None and valid_to is not None and valid_to < valid_from:
+        yield ValidationError("valid_to must not precede valid_from")
+
+
 def coverage_buckets_fit_denominator(validator, enabled, instance, schema):
     bucket_names = (
         "numerator",
@@ -83,24 +110,13 @@ def experiment_artifacts_are_bound(validator, enabled, instance, schema):
     if not enabled or not isinstance(instance, dict):
         return
 
-    def parse_timestamp(value):
-        if not isinstance(value, str):
-            return None
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except (ValueError, OverflowError):
-            return None
-        if parsed.tzinfo is None or parsed.utcoffset() is None:
-            return None
-        return parsed
-
     protocol = instance.get("protocol")
     if not isinstance(protocol, dict):
         return
     protocol_created_value = protocol.get("created_at")
     protocol_frozen_value = protocol.get("protocol_frozen_at")
-    protocol_created_at = parse_timestamp(protocol_created_value)
-    protocol_frozen_at = parse_timestamp(protocol_frozen_value)
+    protocol_created_at = _parse_timestamp(protocol_created_value)
+    protocol_frozen_at = _parse_timestamp(protocol_frozen_value)
     if isinstance(protocol_created_value, str) and protocol_created_at is None:
         yield ValidationError("protocol.created_at must be a timezone-aware timestamp")
     if isinstance(protocol_frozen_value, str) and protocol_frozen_at is None:
@@ -293,8 +309,8 @@ def experiment_artifacts_are_bound(validator, enabled, instance, schema):
         for sequence, run in enumerate(runs):
             started_at = run.get("started_at")
             ended_at = run.get("ended_at")
-            start = parse_timestamp(started_at)
-            end = parse_timestamp(ended_at)
+            start = _parse_timestamp(started_at)
+            end = _parse_timestamp(ended_at)
             if isinstance(started_at, str) and start is None:
                 yield ValidationError(
                     "run started_at must be a timezone-aware timestamp"
@@ -367,7 +383,7 @@ def experiment_artifacts_are_bound(validator, enabled, instance, schema):
                             "first_failure.run_id must identify the earliest failed or mixed run"
                         )
                     captured_value = first_failure.get("captured_at")
-                    captured_at = parse_timestamp(captured_value)
+                    captured_at = _parse_timestamp(captured_value)
                     if isinstance(captured_value, str) and captured_at is None:
                         yield ValidationError(
                             "first_failure.captured_at must be a timezone-aware timestamp"
@@ -570,6 +586,7 @@ def chosen_alternative_is_declared(validator, enabled, instance, schema):
 CONTRACT_VALIDATOR = validators.extend(
     Draft202012Validator,
     {
+        "x-valid-time-window": valid_time_window,
         "x-coverage-buckets-fit-denominator": coverage_buckets_fit_denominator,
         "x-experiment-artifacts-are-bound": experiment_artifacts_are_bound,
         "x-coverage-gates-are-consistent": coverage_gates_are_consistent,

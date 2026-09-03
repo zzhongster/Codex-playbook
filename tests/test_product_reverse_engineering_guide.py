@@ -15,6 +15,7 @@ from tools.product_reverse_engineering_validation import (
     create_schema_registry,
     create_schema_validator,
     validate_claim_evidence_trace_bundle,
+    validate_record,
 )
 
 
@@ -2551,6 +2552,56 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             list(self.schema_validator("evidence").iter_errors(evidence))
         )
 
+    def test_version_scope_rejects_reversed_or_malformed_time_windows(self):
+        self.require_all_schemas_and_examples()
+        scoped_record_types = (
+            "asset",
+            "evidence",
+            "claim",
+            "trace-link",
+            "decision",
+            "coverage-summary",
+        )
+        for record_type in scoped_record_types:
+            with self.subTest(record_type=record_type, case="reversed"):
+                record = self.read_json_file(
+                    SCHEMA_EXAMPLES[record_type]["valid"]
+                )
+                record["version_scope"].update(
+                    {
+                        "valid_from": "2026-01-15T10:00:00Z",
+                        "valid_to": "2026-01-15T09:59:59Z",
+                    }
+                )
+                self.assertTrue(
+                    validate_record(record, schema_name=record_type)
+                )
+
+        nullable_end = self.read_json_file(
+            SCHEMA_EXAMPLES["asset"]["valid"]
+        )
+        nullable_end["version_scope"].update(
+            {
+                "valid_from": "2026-01-15T10:00:00Z",
+                "valid_to": None,
+            }
+        )
+        self.assertEqual(
+            [], validate_record(nullable_end, schema_name="asset")
+        )
+
+        malformed_start = copy.deepcopy(nullable_end)
+        malformed_start["version_scope"]["valid_from"] = "not-a-timestamp"
+        try:
+            malformed_errors = validate_record(
+                malformed_start, schema_name="asset"
+            )
+        except (TypeError, ValueError) as error:
+            self.fail(
+                f"version scope validator raised {type(error).__name__}: {error}"
+            )
+        self.assertTrue(malformed_errors)
+
     def test_coverage_semantics_reject_overcount_and_invalid_g5_combinations(self):
         self.require_all_schemas_and_examples()
         coverage = self.read_json_file(
@@ -3563,7 +3614,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "non-reserved IP": {"address": "203.0.114.8"},
             "absolute user path": {"path": "/Users/alice/customer.json"},
             "customer record": {"note": "customer_name=RealCo Holdings"},
-            "secret-shaped key": {"api_key": "synthetic-placeholder"},
+            "secret-shaped key": {"api_key": "q7L9v2N4x6K8p0R3"},
             "URL userinfo": {
                 "url": "https://fixture-user:long-password@example.invalid/private"
             },
@@ -4023,7 +4074,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         ):
             with self.subTest(secret_key=secret_key):
                 self.assertTrue(
-                    fixture_safety_errors({secret_key: "synthetic-placeholder"})
+                    fixture_safety_errors({secret_key: "q7L9v2N4x6K8p0R3"})
                 )
 
         safe_urls = {
@@ -4033,6 +4084,57 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "encoded_documentation_url": "https://%65xample.invalid/sample",
         }
         self.assertEqual([], fixture_safety_errors(safe_urls))
+
+    def test_fixture_safety_normalizes_secret_fields_and_assignments(self):
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+        secret_field_names = (
+            "client_secret",
+            "db_password",
+            "aws_secret_access_key",
+            "AccountKey",
+            "access_token",
+            "apiKey",
+            "passwordHash",
+        )
+        for field_name in secret_field_names:
+            with self.subTest(field_name=field_name):
+                self.assertTrue(
+                    fixture_safety_errors(
+                        {field_name: "q7L9v2N4x6K8p0R3"}
+                    )
+                )
+
+        unsafe_assignments = (
+            {"note": "clientSecret=q7L9v2N4x6K8p0R3"},
+            {"nested": {"description": "db-password: q7L9v2N4x6K8p0R3"}},
+            {
+                "items": [
+                    {"note": "aws secret access key=q7L9v2N4x6K8p0R3"}
+                ]
+            },
+            {"note": "AccountKey=q7L9v2N4x6K8p0R3"},
+        )
+        for mutation in unsafe_assignments:
+            with self.subTest(mutation=mutation):
+                self.assertTrue(fixture_safety_errors(mutation))
+
+        synthetic_placeholders = {
+            field_name: "synthetic-placeholder"
+            for field_name in secret_field_names
+        }
+        synthetic_placeholders["nested"] = {
+            "items": [
+                {"note": "api-key=synthetic-placeholder"},
+                {"note": "password hash: synthetic-placeholder"},
+            ]
+        }
+        synthetic_placeholders["access_token_status"] = "disabled"
+        synthetic_placeholders["password_policy"] = "required"
+        self.assertEqual(
+            [], fixture_safety_errors(synthetic_placeholders)
+        )
 
     def test_fixture_safety_limits_business_checks_to_identity_fields(self):
         fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
@@ -7440,6 +7542,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         copied_implementations = [
             "def " + name + "("
             for name in (
+                "valid_time_window",
                 "coverage_buckets_fit_denominator",
                 "experiment_artifacts_are_bound",
                 "coverage_gates_are_consistent",
