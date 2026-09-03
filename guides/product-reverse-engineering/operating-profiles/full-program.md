@@ -60,7 +60,7 @@ Agent 可执行已授权、输入固定、输出路径受限的任务包和确�
 
 Phase 9 不是四个布尔开关。`ART-P9-EVIDENCE-INPUT` 是不可变外部输入，必须携带版本、范围、SHA-256 内容哈希和授权身份；`ART-P9-DELTA` 必须同时直接消费它和旧 freeze。影响选择确定最小重跑集合后，先发布受影响门禁为 `pending` 的 ledger，再执行分支选择；`ART-P9-REVALIDATION` 必须消费该 pending ledger，完成后才发布 post-revalidation verdict ledger，禁止先复验后补 pending。
 
-分支选择器恰好激活一个分支。运行分支直接绑定当前 `ART-P0-AUTH`、当前且 `pass` 的 `ART-G0-AUTH` 和逐动作授权；获批静态分支直接绑定 `ART-P5-STATIC`、`ART-P5-RUNTIME-GAP`、`ART-P5-STATIC-ACCEPTANCE`、`ART-G5-RUNTIME` 与有效接受决定，最高为 `statically-supported`，不得生成 `runtime-confirmed`。schedule 的 `conditional_inputs`、选择器 DAG 节点和复验节点必须引用相同的当前激活输入，不能只在说明文字里声明分支。`ART-P9-CALIBRATION` 对照先前预测/置信度和实证结果，`ART-P9-LEARNING` 只形成方法修订与成熟度候选，不直接修改产品主张真值，也不因单项目成功提升成熟度；之后才生成新的 delta/hash/summary 快照。
+分支选择器恰好激活一个分支。当前 `ART-P0-AUTH` 与当前且 `pass` 的 `ART-G0-AUTH` 是两个分支都必须直接消费的共同输入，静态分支不得删除它们。运行分支还要求逐动作授权；获批静态分支还直接绑定 `ART-P5-STATIC`、`ART-P5-RUNTIME-GAP`、`ART-P5-STATIC-ACCEPTANCE` 与核心唯一门禁记录 `ART-G5-VALIDATION`。该 G5 记录必须同时满足 `selected_branch=approved-static`、`verdict=pass`、`runtime_confirmation_status=unavailable-with-approved-static-ceiling`，并有有效接受决定；静态主张最高为 `statically-supported`，不得生成 `runtime-confirmed`。schedule 的 `conditional_inputs`、选择器 DAG 节点和复验节点必须引用相同的共同输入与当前激活分支输入，不能只在说明文字里声明分支。`ART-P9-CALIBRATION` 对照先前预测/置信度和实证结果，`ART-P9-LEARNING` 只形成方法修订与成熟度候选，不直接修改产品主张真值，也不因单项目成功提升成熟度；之后才生成新的 delta/hash/summary 快照。
 
 ## 允许主张
 
@@ -266,9 +266,11 @@ schedule:
     conditional_inputs:
       selector_artifact: artifact:program.phase9-branch-selection.v1
       selected_branch: runtime
+      common_inputs: [ART-P0-AUTH, ART-G0-AUTH]
+      common_input_requirement: current-authorization-and-current-g0-pass
       branch_inputs:
-        runtime: [ART-P0-AUTH, ART-G0-AUTH]
-        approved-static: [ART-P5-STATIC, ART-P5-RUNTIME-GAP, ART-P5-STATIC-ACCEPTANCE, ART-G5-RUNTIME]
+        runtime: []
+        approved-static: [ART-P5-STATIC, ART-P5-RUNTIME-GAP, ART-P5-STATIC-ACCEPTANCE, ART-G5-VALIDATION]
     outputs:
       - ART-P9-DELTA
       - artifact:program.impact-selection.phase9.v1
@@ -486,18 +488,24 @@ full_program_controls:
     artifact_id: artifact:program.phase9-branch-selection.v1
     selected_branch: runtime
     exactly_one: true
+    common_inputs: [ART-P0-AUTH, ART-G0-AUTH]
+    common_input_requirements:
+      ART-P0-AUTH: {must_be_current: true}
+      ART-G0-AUTH: {must_be_current: true, verdict: pass, binds_authorization: ART-P0-AUTH}
     branches:
       runtime:
         activation: selected
-        required_inputs: [ART-P0-AUTH, ART-G0-AUTH]
-        current_authorization_required: true
-        current_g0_required: true
-        g0_required_verdict: pass
+        required_inputs: []
         per_action_authorization: true
       approved-static:
         activation: excluded
-        required_inputs: [ART-P5-STATIC, ART-P5-RUNTIME-GAP, ART-P5-STATIC-ACCEPTANCE, ART-G5-RUNTIME]
+        required_inputs: [ART-P5-STATIC, ART-P5-RUNTIME-GAP, ART-P5-STATIC-ACCEPTANCE, ART-G5-VALIDATION]
         valid_acceptance_decision_required: true
+        g5_required_state:
+          artifact_id: ART-G5-VALIDATION
+          selected_branch: approved-static
+          verdict: pass
+          runtime_confirmation_status: unavailable-with-approved-static-ceiling
         claim_ceiling: statically-supported
         forbidden_status: runtime-confirmed
   phase9_revalidation:
@@ -507,7 +515,7 @@ full_program_controls:
       per_action_authorization: true
       result_artifact: ART-P9-REVALIDATION
     approved-static:
-      required_artifacts: [ART-P5-STATIC, ART-P5-RUNTIME-GAP, ART-P5-STATIC-ACCEPTANCE]
+      required_artifacts: [ART-P5-STATIC, ART-P5-RUNTIME-GAP, ART-P5-STATIC-ACCEPTANCE, ART-G5-VALIDATION]
       claim_ceiling: statically-supported
       forbidden_status: runtime-confirmed
       result_artifact: ART-P9-REVALIDATION
@@ -561,7 +569,7 @@ full_program_controls:
     split_by: [business-domain, runtime-identity, tenant-role, data-ownership, failure-boundary]
     freeze_conditions: [child_denominator_bound, child_gates_pass, child_hashes_recorded, parent_summary_rebuilt]
   artifact_dag:
-    external_inputs: [ART-P0-AUTH, ART-P0-BRIEF, ART-P1-BASELINE, ART-P9-EVIDENCE-INPUT, ART-G0-AUTH, ART-P5-STATIC, ART-P5-RUNTIME-GAP, ART-P5-STATIC-ACCEPTANCE, ART-G5-RUNTIME]
+    external_inputs: [ART-P0-AUTH, ART-P0-BRIEF, ART-P1-BASELINE, ART-P9-EVIDENCE-INPUT, ART-G0-AUTH, ART-P5-STATIC, ART-P5-RUNTIME-GAP, ART-P5-STATIC-ACCEPTANCE, ART-G5-VALIDATION]
     artifact_versions:
       - {sequence: 1, artifact_id: artifact:program.wave-plan.v1, concept_id: artifact-concept:program.wave-plan, produced_in: wave-0-authorize-baseline, inputs: [ART-P0-AUTH, ART-P1-BASELINE], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: pre-terminal}
       - {sequence: 2, artifact_id: artifact:program.phase01-baseline.v1, concept_id: artifact-concept:program.phase-baseline, produced_in: wave-0-authorize-baseline, inputs: [ART-P1-BASELINE], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: pre-terminal}
@@ -617,7 +625,7 @@ full_program_controls:
       - {sequence: 52, artifact_id: ART-P9-DELTA, concept_id: artifact-concept:program.phase9-delta, produced_in: wave-8-delta-calibration, inputs: [ART-P8-FREEZE, artifact:program.profile-exit-verification.phase8.v1, ART-P9-EVIDENCE-INPUT], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
       - {sequence: 53, artifact_id: artifact:program.impact-selection.phase9.v1, concept_id: artifact-concept:program.phase9-impact-selection, produced_in: wave-8-delta-calibration, inputs: [ART-P9-DELTA], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
       - {sequence: 54, artifact_id: artifact:program.gate-ledger.phase9-pending.v07, concept_id: artifact-concept:program.gate-ledger, produced_in: wave-8-delta-calibration, inputs: [artifact:program.gate-ledger.g7.v06, ART-P9-DELTA, artifact:program.impact-selection.phase9.v1], predecessor_id: artifact:program.gate-ledger.g7.v06, predecessor_relation: replaces, replaced_by: artifact:program.gate-ledger.phase9-verdict.v08, lifecycle: replaced, terminal_stage: phase9-delta, gate_state: pending}
-      - {sequence: 55, artifact_id: artifact:program.phase9-branch-selection.v1, concept_id: artifact-concept:program.phase9-branch-selection, produced_in: wave-8-delta-calibration, inputs: [ART-P9-EVIDENCE-INPUT, artifact:program.gate-ledger.phase9-pending.v07, ART-P0-AUTH, ART-G0-AUTH], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta, selected_branch: runtime, conditional_input_ids: [ART-P0-AUTH, ART-G0-AUTH]}
+      - {sequence: 55, artifact_id: artifact:program.phase9-branch-selection.v1, concept_id: artifact-concept:program.phase9-branch-selection, produced_in: wave-8-delta-calibration, inputs: [ART-P9-EVIDENCE-INPUT, artifact:program.gate-ledger.phase9-pending.v07, ART-P0-AUTH, ART-G0-AUTH], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta, selected_branch: runtime, common_input_ids: [ART-P0-AUTH, ART-G0-AUTH], common_input_requirement: current-authorization-and-current-g0-pass, conditional_input_ids: []}
       - {sequence: 56, artifact_id: ART-P9-REVALIDATION, concept_id: artifact-concept:program.phase9-revalidation, produced_in: wave-8-delta-calibration, inputs: [ART-P9-DELTA, artifact:program.impact-selection.phase9.v1, artifact:program.gate-ledger.phase9-pending.v07, artifact:program.phase9-branch-selection.v1, ART-P9-EVIDENCE-INPUT, ART-P0-AUTH, ART-G0-AUTH], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
       - {sequence: 57, artifact_id: artifact:program.gate-ledger.phase9-verdict.v08, concept_id: artifact-concept:program.gate-ledger, produced_in: wave-8-delta-calibration, inputs: [artifact:program.gate-ledger.phase9-pending.v07, ART-P9-REVALIDATION], predecessor_id: artifact:program.gate-ledger.phase9-pending.v07, predecessor_relation: replaces, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta, gate_state: post-revalidation-verdict}
       - {sequence: 58, artifact_id: ART-P9-CALIBRATION, concept_id: artifact-concept:program.phase9-calibration, produced_in: wave-8-delta-calibration, inputs: [ART-P9-DELTA, ART-P9-REVALIDATION, artifact:program.gate-ledger.phase9-verdict.v08], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}

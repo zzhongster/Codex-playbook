@@ -1021,7 +1021,14 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
 
         phase9_branch_selector = controls["phase9_branch_selector"]
         self.assertEqual(
-            {"artifact_id", "selected_branch", "exactly_one", "branches"},
+            {
+                "artifact_id",
+                "selected_branch",
+                "exactly_one",
+                "common_inputs",
+                "common_input_requirements",
+                "branches",
+            },
             set(phase9_branch_selector),
         )
         self.assertEqual(
@@ -1029,6 +1036,21 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             phase9_branch_selector["artifact_id"],
         )
         self.assertIs(phase9_branch_selector["exactly_one"], True)
+        self.assertEqual(
+            ["ART-P0-AUTH", "ART-G0-AUTH"],
+            phase9_branch_selector["common_inputs"],
+        )
+        self.assertEqual(
+            {
+                "ART-P0-AUTH": {"must_be_current": True},
+                "ART-G0-AUTH": {
+                    "must_be_current": True,
+                    "verdict": "pass",
+                    "binds_authorization": "ART-P0-AUTH",
+                },
+            },
+            phase9_branch_selector["common_input_requirements"],
+        )
         self.assertIn(
             phase9_branch_selector["selected_branch"],
             {"runtime", "approved-static"},
@@ -1041,10 +1063,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "activation": (
                     "selected" if selected_phase9_branch == "runtime" else "excluded"
                 ),
-                "required_inputs": ["ART-P0-AUTH", "ART-G0-AUTH"],
-                "current_authorization_required": True,
-                "current_g0_required": True,
-                "g0_required_verdict": "pass",
+                "required_inputs": [],
                 "per_action_authorization": True,
             },
             phase9_branches["runtime"],
@@ -1060,9 +1079,17 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                     "ART-P5-STATIC",
                     "ART-P5-RUNTIME-GAP",
                     "ART-P5-STATIC-ACCEPTANCE",
-                    "ART-G5-RUNTIME",
+                    "ART-G5-VALIDATION",
                 ],
                 "valid_acceptance_decision_required": True,
+                "g5_required_state": {
+                    "artifact_id": "ART-G5-VALIDATION",
+                    "selected_branch": "approved-static",
+                    "verdict": "pass",
+                    "runtime_confirmation_status": (
+                        "unavailable-with-approved-static-ceiling"
+                    ),
+                },
                 "claim_ceiling": "statically-supported",
                 "forbidden_status": "runtime-confirmed",
             },
@@ -1094,6 +1121,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                     "ART-P5-STATIC",
                     "ART-P5-RUNTIME-GAP",
                     "ART-P5-STATIC-ACCEPTANCE",
+                    "ART-G5-VALIDATION",
                 ],
                 "claim_ceiling": "statically-supported",
                 "forbidden_status": "runtime-confirmed",
@@ -1187,7 +1215,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "ART-P5-STATIC",
                 "ART-P5-RUNTIME-GAP",
                 "ART-P5-STATIC-ACCEPTANCE",
-                "ART-G5-RUNTIME",
+                "ART-G5-VALIDATION",
             }.issubset(external_inputs)
         )
         self.assertEqual(len(dag["external_inputs"]), len(external_inputs))
@@ -1224,7 +1252,12 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 node["artifact_id"]
                 == "artifact:program.phase9-branch-selection.v1"
             ):
-                node_fields |= {"selected_branch", "conditional_input_ids"}
+                node_fields |= {
+                    "selected_branch",
+                    "common_input_ids",
+                    "common_input_requirement",
+                    "conditional_input_ids",
+                }
             if node["artifact_id"] in {
                 "artifact:program.gate-ledger.phase9-pending.v07",
                 "artifact:program.gate-ledger.phase9-verdict.v08",
@@ -1330,7 +1363,13 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         )
         conditional_inputs = phase9_schedule["conditional_inputs"]
         self.assertEqual(
-            {"selector_artifact", "selected_branch", "branch_inputs"},
+            {
+                "selector_artifact",
+                "selected_branch",
+                "common_inputs",
+                "common_input_requirement",
+                "branch_inputs",
+            },
             set(conditional_inputs),
         )
         self.assertEqual(
@@ -1340,6 +1379,14 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertEqual(
             phase9_branch_selector["selected_branch"],
             conditional_inputs["selected_branch"],
+        )
+        self.assertEqual(
+            phase9_branch_selector["common_inputs"],
+            conditional_inputs["common_inputs"],
+        )
+        self.assertEqual(
+            "current-authorization-and-current-g0-pass",
+            conditional_inputs["common_input_requirement"],
         )
         self.assertEqual(
             {
@@ -1353,11 +1400,13 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "required_inputs"
             ]
         )
+        common_phase9_inputs = set(phase9_branch_selector["common_inputs"])
         self.assertEqual(
             {
                 "ART-P8-FREEZE",
                 "artifact:program.profile-exit-verification.phase8.v1",
                 "ART-P9-EVIDENCE-INPUT",
+                *common_phase9_inputs,
                 *active_phase9_inputs,
             },
             set(phase9_schedule["inputs"]),
@@ -1490,12 +1539,20 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             selector_node["selected_branch"],
         )
         self.assertEqual(
+            common_phase9_inputs, set(selector_node["common_input_ids"])
+        )
+        self.assertEqual(
+            "current-authorization-and-current-g0-pass",
+            selector_node["common_input_requirement"],
+        )
+        self.assertEqual(
             active_phase9_inputs, set(selector_node["conditional_input_ids"])
         )
         self.assertEqual(
             {
                 "ART-P9-EVIDENCE-INPUT",
                 "artifact:program.gate-ledger.phase9-pending.v07",
+                *common_phase9_inputs,
                 *active_phase9_inputs,
             },
             set(selector_node["inputs"]),
@@ -1507,6 +1564,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "artifact:program.gate-ledger.phase9-pending.v07",
                 "artifact:program.phase9-branch-selection.v1",
                 "ART-P9-EVIDENCE-INPUT",
+                *common_phase9_inputs,
                 *active_phase9_inputs,
             }.issubset(set(nodes_by_id["ART-P9-REVALIDATION"]["inputs"]))
         )
@@ -8497,6 +8555,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         selector["selected_branch"] = "approved-static"
         selector["branches"]["runtime"]["activation"] = "excluded"
         selector["branches"]["approved-static"]["activation"] = "selected"
+        common_inputs = selector["common_inputs"]
         active_inputs = selector["branches"]["approved-static"]["required_inputs"]
 
         phase9_schedule = next(
@@ -8509,6 +8568,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "ART-P8-FREEZE",
             "artifact:program.profile-exit-verification.phase8.v1",
             "ART-P9-EVIDENCE-INPUT",
+            *common_inputs,
             *active_inputs,
         ]
 
@@ -8518,10 +8578,12 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             if node["artifact_id"] == selector["artifact_id"]
         )
         selector_node["selected_branch"] = "approved-static"
+        selector_node["common_input_ids"] = list(common_inputs)
         selector_node["conditional_input_ids"] = list(active_inputs)
         selector_node["inputs"] = [
             "ART-P9-EVIDENCE-INPUT",
             "artifact:program.gate-ledger.phase9-pending.v07",
+            *common_inputs,
             *active_inputs,
         ]
         revalidation = next(
@@ -8529,11 +8591,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             for node in controls["artifact_dag"]["artifact_versions"]
             if node["artifact_id"] == "ART-P9-REVALIDATION"
         )
-        revalidation["inputs"] = [
-            item
-            for item in revalidation["inputs"]
-            if item not in {"ART-P0-AUTH", "ART-G0-AUTH"}
-        ] + list(active_inputs)
+        revalidation["inputs"] = list(revalidation["inputs"]) + list(active_inputs)
 
         self.assert_full_program_controls(controls, schedule)
 
@@ -8819,9 +8877,9 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             )
 
         stale_runtime_g0 = copy.deepcopy(full_program["full_program_controls"])
-        stale_runtime_g0["phase9_branch_selector"]["branches"]["runtime"][
-            "g0_required_verdict"
-        ] = "pending"
+        stale_runtime_g0["phase9_branch_selector"]["common_input_requirements"][
+            "ART-G0-AUTH"
+        ]["verdict"] = "pending"
         with self.assertRaises(AssertionError):
             self.assert_full_program_controls(stale_runtime_g0, full_program["schedule"])
 
@@ -8834,6 +8892,17 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.assert_full_program_controls(
                 invalid_static_acceptance, full_program["schedule"]
+            )
+
+        invalid_static_g5_state = copy.deepcopy(
+            full_program["full_program_controls"]
+        )
+        invalid_static_g5_state["phase9_branch_selector"]["branches"][
+            "approved-static"
+        ]["g5_required_state"]["runtime_confirmation_status"] = "confirmed"
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                invalid_static_g5_state, full_program["schedule"]
             )
 
         multiple_phase9_branches = copy.deepcopy(
@@ -8866,6 +8935,66 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.assert_full_program_controls(
                 full_program["full_program_controls"], schedule_branch_input_mismatch
+            )
+
+        static_branch_without_common_authorization = copy.deepcopy(
+            full_program["full_program_controls"]
+        )
+        static_schedule_without_common_authorization = copy.deepcopy(
+            full_program["schedule"]
+        )
+        selector = static_branch_without_common_authorization[
+            "phase9_branch_selector"
+        ]
+        selector["selected_branch"] = "approved-static"
+        selector["branches"]["runtime"]["activation"] = "excluded"
+        selector["branches"]["approved-static"]["activation"] = "selected"
+        common_inputs = selector["common_inputs"]
+        active_inputs = selector["branches"]["approved-static"]["required_inputs"]
+        phase9_schedule = next(
+            step
+            for step in static_schedule_without_common_authorization
+            if step["step_id"] == "wave-8-delta-calibration"
+        )
+        phase9_schedule["conditional_inputs"]["selected_branch"] = "approved-static"
+        phase9_schedule["inputs"] = [
+            "ART-P8-FREEZE",
+            "artifact:program.profile-exit-verification.phase8.v1",
+            "ART-P9-EVIDENCE-INPUT",
+            *common_inputs,
+            *active_inputs,
+        ]
+        phase9_schedule["inputs"].remove("ART-P0-AUTH")
+        selector_node = next(
+            node
+            for node in static_branch_without_common_authorization["artifact_dag"][
+                "artifact_versions"
+            ]
+            if node["artifact_id"] == selector["artifact_id"]
+        )
+        selector_node["selected_branch"] = "approved-static"
+        selector_node["common_input_ids"] = ["ART-G0-AUTH"]
+        selector_node["conditional_input_ids"] = list(active_inputs)
+        selector_node["inputs"] = [
+            "ART-P9-EVIDENCE-INPUT",
+            "artifact:program.gate-ledger.phase9-pending.v07",
+            "ART-G0-AUTH",
+            *active_inputs,
+        ]
+        revalidation = next(
+            node
+            for node in static_branch_without_common_authorization["artifact_dag"][
+                "artifact_versions"
+            ]
+            if node["artifact_id"] == "ART-P9-REVALIDATION"
+        )
+        revalidation["inputs"] = [
+            item for item in revalidation["inputs"] if item != "ART-P0-AUTH"
+        ] + list(active_inputs)
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                static_branch_without_common_authorization,
+                static_schedule_without_common_authorization,
             )
 
         phase9_without_impact_edge = copy.deepcopy(
