@@ -49,6 +49,11 @@ ALLOWED_MATURITY_LABELS = (
     "industry-established",
     "proposed",
 )
+TASK_4_DOCUMENT_NAMES = (
+    "runtime-experiments",
+    "coverage-quality-and-freeze",
+    "human-agent-collaboration",
+)
 
 
 class ProductReverseEngineeringGuideTests(unittest.TestCase):
@@ -85,6 +90,17 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         return runpy.run_path(
             str(VALIDATOR_PATH), run_name="product_reverse_engineering_validator"
         )
+
+    def assert_one_nonblank_applicability_declaration(self, document):
+        declaration_lines = [
+            line.strip()
+            for line in document.splitlines()
+            if line.strip().removeprefix("**").startswith("适用范围：")
+        ]
+        self.assertEqual(1, len(declaration_lines))
+        match = re.fullmatch(r"\*\*适用范围：\*\*\s*(\S.+)", declaration_lines[0])
+        self.assertIsNotNone(match)
+        self.assertTrue(match.group(1).strip())
 
     def test_required_entry_files_exist(self):
         for path in REQUIRED_ENTRY_FILES:
@@ -142,6 +158,22 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 self.assertIsNotNone(match)
                 self.assertIn(match.group(1), ALLOWED_MATURITY_LABELS)
                 self.assertRegex(document, r"(?m)^\*\*适用范围：\*\*\s*\S.+$")
+
+    def test_each_task_4_document_declares_exactly_one_nonblank_applicability(self):
+        for name in TASK_4_DOCUMENT_NAMES:
+            with self.subTest(document=name):
+                self.assert_one_nonblank_applicability_declaration(
+                    self.read_foundation_document(name)
+                )
+
+    def test_task_4_applicability_check_rejects_duplicate_and_blank_mutations(self):
+        valid = "# 示例\n\n**适用范围：** 有限且明确的边界。\n"
+        duplicate = valid + "\n**适用范围：** 第二个边界。\n"
+        blank = valid.replace("有限且明确的边界。", "")
+        for mutation in (duplicate, blank):
+            with self.subTest(mutation=mutation):
+                with self.assertRaises(AssertionError):
+                    self.assert_one_nonblank_applicability_declaration(mutation)
 
     def test_evidence_document_defines_exact_claim_status_vocabulary(self):
         document = self.read_foundation_document("evidence-and-confidence")
@@ -557,7 +589,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 self.assertIn(field, protocol)
 
         paths = self.section_text(document, "## 路径矩阵与首错保全")
-        for path in ("负向", "边界", "并发", "重试", "故障注入"):
+        for path in ("负向", "边界", "并发", "重试", "故障注入", "逆向"):
             with self.subTest(path=path):
                 self.assertIn(path, paths)
         self.assertIn("首个失败", paths)
@@ -646,6 +678,33 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 self.assertIn(contract, freeze)
         self.assertIn("不得删除未知项来改善指标", freeze)
 
+    def test_phase_summary_records_have_complete_immutable_identity(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        phase_summary = self.section_text(document, "## 阶段摘要记录")
+        fields = [
+            match.group(1)
+            for line in phase_summary.splitlines()
+            if (match := re.fullmatch(r"\| `([^`]+)` \| .+ \|", line))
+        ]
+        self.assertEqual(
+            [
+                "phase ID",
+                "status",
+                "target/version and scope identity",
+                "frozen denominator",
+                "input hashes",
+                "child-summary hashes",
+                "output allow-list and hashes",
+                "coverage/unknown/risk counts",
+                "G0–G7 gate verdicts",
+                "owner",
+                "timestamp",
+            ],
+            fields,
+        )
+        self.assertIn("父阶段只消费不可变子摘要", phase_summary)
+        self.assertIn("不得重新解释子项事实", phase_summary)
+
     def test_human_agent_collaboration_assigns_decision_rights(self):
         document = self.read_foundation_document("human-agent-collaboration")
         rights = self.section_text(document, "## 决策权矩阵")
@@ -677,9 +736,9 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "scope",
                 "denominator",
                 "allowed evidence",
-                "forbidden assumptions",
-                "output paths/types",
-                "schemas",
+                "forbidden inference",
+                "output paths or record types",
+                "schema",
                 "validation command",
                 "stop conditions",
                 "review owner",
