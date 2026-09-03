@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Key-path-aware safety checks for published synthetic JSON fixtures."""
 
+import base64
+import binascii
 import ipaddress
 import re
 from urllib.parse import urlsplit
@@ -12,9 +14,21 @@ _SECRET_KEY = re.compile(
 )
 _CREDENTIAL_VALUE = re.compile(
     r"(?i)(?:\b(?:password|passwd|secret|(?:access[ _-]?)?token|api[ _-]?key)\b"
-    r"\s*[:=]\s*[\"']?[A-Za-z0-9._~+/-]{6,}|"
-    r"\b(?:authorization\s*[:=]\s*)?bearer\s+[A-Za-z0-9._~+/-]{8,}|"
-    r"\b(?:authorization\s*[:=]\s*)?basic\s+[A-Za-z0-9+/]{8,}={0,2})"
+    r"\s*[:=]\s*[\"']?[A-Za-z0-9._~+/-]{6,})"
+)
+_AUTHORIZATION_HEADER = re.compile(
+    r"(?i)\bauthorization\s*[:=]\s*[a-z][a-z0-9._~-]{0,31}\s+\S+"
+)
+_BASIC_CREDENTIAL = re.compile(r"(?i)\bbasic\s+([A-Za-z0-9+/]{8,}={0,2})")
+_BEARER_CREDENTIAL = re.compile(
+    r"(?i)\bbearer\s+[A-Za-z0-9._~+/-]{8,}"
+)
+_NEGOTIATE_CREDENTIAL = re.compile(
+    r"(?i)\bnegotiate\s+([A-Za-z0-9+/]{8,}={0,2})"
+)
+_DIGEST_CREDENTIAL = re.compile(
+    r"(?i)\bdigest\s+[^\r\n]{0,1024}\b"
+    r"(?:username|nonce|response|signature)\s*="
 )
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
 _AWS_ACCESS_KEY = re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")
@@ -49,14 +63,76 @@ _STABLE_ID = re.compile(
     r"(?:[a-z][a-z0-9-]*:[A-F0-9]{8,64}|"
     r"[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+)"
 )
-_NETWORK_FIELD = re.compile(
-    r"(?i)(?:^|[_-])(?:address|domain|endpoint|host|hostname|ip|ip-address|"
-    r"ip_address|ipv4|ipv6|origin|server|uri|url)$"
-)
 _NETWORK_LABEL = re.compile(
     r"(?i)\b(?:address|domain|host|hostname|ip|ip-address|server)"
     r"\s*[:=]\s*(?P<target>\[[0-9a-f:]+\]|"
     r"(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}|[a-z0-9.-]+)"
+)
+_AUTHORIZATION_FIELD = re.compile(r"(?i)^(?:authorization|proxy_authorization)$")
+_AUTHORIZATION_PARAMETER_FIELD = re.compile(
+    r"(?i)^(?:cnonce|credential|credentials|nonce|response|signature|username)$"
+)
+_SAFE_AUTHORIZATION_STATUSES = frozenset(
+    {
+        "allowed",
+        "approved",
+        "authorized",
+        "denied",
+        "disallowed",
+        "fail",
+        "not-applicable",
+        "not-required",
+        "pass",
+        "pending",
+        "required",
+        "unauthorized",
+    }
+)
+_REAL_TLDS = frozenset(
+    {
+        "ai",
+        "app",
+        "au",
+        "biz",
+        "ca",
+        "ch",
+        "cloud",
+        "cn",
+        "co",
+        "com",
+        "de",
+        "dev",
+        "edu",
+        "es",
+        "fr",
+        "gov",
+        "in",
+        "info",
+        "int",
+        "io",
+        "it",
+        "jp",
+        "me",
+        "mil",
+        "net",
+        "nl",
+        "no",
+        "org",
+        "ru",
+        "se",
+        "tech",
+        "tv",
+        "uk",
+        "us",
+        "xyz",
+    }
+)
+_DOCUMENTATION_DOMAINS = frozenset({"example.com", "example.net", "example.org"})
+_KNOWN_TECHNICAL_SYMBOLS = frozenset(
+    {"java.lang.String", "System.Collections.Generic.List", "System.SysUtils"}
+)
+_KNOWN_FIXTURE_FILE = re.compile(
+    r"(?i)^[a-z0-9][a-z0-9_-]*\.(?:csv|html|json|log|md|txt|xml|yaml|yml)$"
 )
 _FICTIONAL_MARKER = re.compile(
     r"(?i)(?:^|[^a-z0-9])(?:demo|example|fictional|fixture|replace|sample|"
@@ -97,6 +173,10 @@ def _reserved_host(host):
         return True
     if normalized.endswith(_RESERVED_SUFFIXES):
         return True
+    if normalized in _DOCUMENTATION_DOMAINS or any(
+        normalized.endswith(f".{domain}") for domain in _DOCUMENTATION_DOMAINS
+    ):
+        return True
     try:
         address = ipaddress.ip_address(normalized)
     except ValueError:
@@ -106,10 +186,20 @@ def _reserved_host(host):
     return address in _RESERVED_IPV6
 
 
-def _network_field(path_keys):
+def _stable_id_field(path_keys):
     if not path_keys:
         return False
-    return bool(_NETWORK_FIELD.search(path_keys[-1]))
+    leaf = path_keys[-1].lower()
+    parent = path_keys[-2].lower() if len(path_keys) > 1 else ""
+    return (
+        leaf == "id"
+        or leaf == "endpoint"
+        or leaf.endswith("_id")
+        or leaf.endswith("_reference")
+        or leaf.endswith("_references")
+        or parent.endswith("_references")
+        or leaf in {"chosen", "source_id", "target_id"}
+    )
 
 
 def _requires_fictional_metadata(path_keys):
@@ -131,12 +221,17 @@ def _requires_fictional_metadata(path_keys):
     return False
 
 
-def _network_identifier_errors(identifier, path):
+def _network_identifier_errors(identifier, path, require_real_tld=False):
     normalized = identifier.strip("[]").rstrip(".")
     try:
         address = ipaddress.ip_address(normalized)
     except ValueError:
-        if _DOMAIN.fullmatch(normalized) and not _reserved_host(normalized):
+        real_tld = normalized.rsplit(".", 1)[-1].lower() in _REAL_TLDS
+        if (
+            _DOMAIN.fullmatch(normalized)
+            and not _reserved_host(normalized)
+            and (not require_real_tld or real_tld)
+        ):
             return [f"{path}: non-reserved domain {normalized.lower()}"]
         return []
     if not _reserved_host(str(address)):
@@ -144,15 +239,51 @@ def _network_identifier_errors(identifier, path):
     return []
 
 
+def _valid_base64_token(token, require_colon=False):
+    try:
+        decoded = base64.b64decode(token, validate=True)
+    except (binascii.Error, ValueError):
+        return False
+    return not require_colon or b":" in decoded
+
+
+def _has_authorization_credential_syntax(value):
+    if _AUTHORIZATION_HEADER.search(value) or _BEARER_CREDENTIAL.search(value):
+        return True
+    if _DIGEST_CREDENTIAL.search(value):
+        return True
+    for match in _BASIC_CREDENTIAL.finditer(value):
+        if _valid_base64_token(match.group(1), require_colon=True):
+            return True
+    for match in _NEGOTIATE_CREDENTIAL.finditer(value):
+        if _valid_base64_token(match.group(1)):
+            return True
+    return False
+
+
+def _authorization_context(path_keys):
+    return any(_AUTHORIZATION_FIELD.fullmatch(key) for key in path_keys[:-1])
+
+
 def _string_safety_errors(value, path, path_keys):
     errors = []
     if (
         _CREDENTIAL_VALUE.search(value)
+        or _has_authorization_credential_syntax(value)
         or _JWT.search(value)
         or _AWS_ACCESS_KEY.search(value)
         or _TOKEN_PREFIX.search(value)
     ):
         errors.append(f"{path}: credential-like value")
+    if path_keys and _AUTHORIZATION_FIELD.fullmatch(path_keys[-1]):
+        if value.strip().lower() not in _SAFE_AUTHORIZATION_STATUSES:
+            errors.append(f"{path}: authorization scalar is not a safe status")
+    elif (
+        path_keys
+        and _authorization_context(path_keys)
+        and _AUTHORIZATION_PARAMETER_FIELD.fullmatch(path_keys[-1])
+    ):
+        errors.append(f"{path}: authorization credential parameter")
     if _USER_PATH.search(value):
         errors.append(f"{path}: absolute user path")
     if _LABELED_BUSINESS_RECORD.search(value):
@@ -180,12 +311,25 @@ def _string_safety_errors(value, path, path_keys):
 
     non_url_text = _URL.sub("", value)
     normalized_non_url_text = non_url_text.strip(" \t\r\n[](){}<>,;\"'")
-    if _network_field(path_keys) and not _STABLE_ID.fullmatch(
-        normalized_non_url_text
-    ):
-        for pattern in (_DOMAIN, _IPV4, _IPV6):
-            for match in pattern.finditer(non_url_text):
-                errors.extend(_network_identifier_errors(match.group(0), path))
+    stable_id_literal = bool(
+        _stable_id_field(path_keys) and _STABLE_ID.fullmatch(normalized_non_url_text)
+    )
+    precise_non_network_literal = bool(
+        value.strip() in _KNOWN_TECHNICAL_SYMBOLS
+        or _KNOWN_FIXTURE_FILE.fullmatch(value.strip())
+    )
+
+    for pattern in (_IPV4, _IPV6):
+        for match in pattern.finditer(value):
+            errors.extend(_network_identifier_errors(match.group(0), path))
+
+    if not stable_id_literal and not precise_non_network_literal:
+        for match in _DOMAIN.finditer(non_url_text):
+            errors.extend(
+                _network_identifier_errors(
+                    match.group(0), path, require_real_tld=True
+                )
+            )
 
     for match in _NETWORK_LABEL.finditer(non_url_text):
         errors.extend(_network_identifier_errors(match.group("target"), path))
@@ -204,6 +348,13 @@ def fixture_safety_errors(value):
                 child_path = f"{path}.{key_text}"
                 if _SECRET_KEY.fullmatch(key_text):
                     errors.append(f"{child_path}: secret-shaped key")
+                if (
+                    _AUTHORIZATION_FIELD.fullmatch(key_text)
+                    and not isinstance(nested, (dict, list, str))
+                ):
+                    errors.append(
+                        f"{child_path}: authorization scalar is not a safe status"
+                    )
                 visit(nested, child_path, (*path_keys, key_text))
         elif isinstance(child, list):
             for position, nested in enumerate(child):

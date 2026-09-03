@@ -3990,13 +3990,16 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "ipv4": "192.0.2.25",
             "ipv6": "2001:db8::25",
             "embedded_reserved_networks": (
-                "Reserved endpoints example.invalid, 192.0.2.25, and "
+                "Reserved endpoints example.invalid, example.com, 192.0.2.25, and "
                 "2001:db8::25 are synthetic."
             ),
             "note": "A normal synthetic observation without credentials.",
+            "auth_description": "Basic authentication is disabled in this fixture.",
             "code_symbol": "com.example.order.OrderHandler.execute",
+            "java_type": "java.lang.String",
             "type_name": "System.Collections.Generic.List",
-            "assembly_version": "1.2.3.4",
+            "delphi_unit": "System.SysUtils",
+            "assembly_version": "1.2.3",
             "config_filename": "config.json",
             "response_filename": "order-response.json",
             "authorization": {
@@ -4006,18 +4009,14 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "authorization_status": "approved",
             "customer_status": "active",
             "customer": {"status": "active", "role": "buyer"},
-            "ordinary_observation": (
-                "The callback reached api.customer.example.com and peer "
-                "203.0.114.8 while parsing a synthetic log line."
-            ),
         }
         self.assertEqual([], fixture_safety_errors(safe_values))
 
         unsafe_values = {
             "credential text": {"note": "password=hunter2"},
             "token value": {"note": "sk-proj-abcdefghijklmnopqrstuv"},
-            "public hostname": {"url": "https://customer.example.com/api"},
-            "plain hostname": {"host": "api.customer.example.com"},
+            "public hostname": {"url": "https://customer.com/api"},
+            "plain hostname": {"host": "api.customer.com"},
             "non-reserved IP": {"address": "203.0.114.8"},
             "absolute user path": {"path": "/Users/alice/customer.json"},
             "customer record": {"note": "customer_name=RealCo Holdings"},
@@ -4074,7 +4073,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "note": "Authorization: Bearer abcdefghijklmnop"
             },
             "colon-prefixed public host": {
-                "note": "host:api.customer.example.com"
+                "note": "host:api.customer.com"
             },
             "customer record filename": {"artifact_name": "customer.md"},
         }
@@ -4104,7 +4103,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             },
             "stable ID plus public host": {
                 "record_id": (
-                    "evidence:sample.normal-id host:api.customer.example.com"
+                    "evidence:sample.normal-id host:api.customer.com"
                 )
             },
             "synthetic key plus user path": {
@@ -4126,6 +4125,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "documentation_ipv6": "2001:db8::25",
             "artifact_name": "template.md",
             "record_id": "evidence:sample.normal-id",
+            "io_record_id": "evidence:sample.service.io",
             "content_hash": (
                 "sha256:abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"
             ),
@@ -4137,31 +4137,32 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "业务主体的 identity/name/id/address/contact 字段", contributing
         )
 
-    def test_fixture_safety_checks_network_identifiers_only_in_network_contexts(self):
+    def test_fixture_safety_preserves_symbols_and_checks_explicit_network_contexts(self):
         fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
             "fixture_safety_errors"
         ]
         allowed_non_network_values = {
             "code_symbol": "org.example.product.OrderService.handle",
             "type_name": "Example.Product.CustomerStatus",
-            "artifact_name": "config.json",
-            "response_name": "order-response.json",
-            "version": "10.20.30.40",
-            "note": "api.customer.example.com is a parser fixture token",
             "endpoint_reference": "endpoint:sample.create-order",
             "endpoint": "endpoint:sample.create-order",
+            "java_type": "java.lang.String",
+            "dotnet_type": "System.Collections.Generic.List",
+            "delphi_unit": "System.SysUtils",
+            "artifact_name": "config.json",
+            "response_name": "order-response.json",
         }
         self.assertEqual([], fixture_safety_errors(allowed_non_network_values))
 
         network_bypass_mutations = {
-            "host field": {"host": "api.customer.example.com"},
-            "endpoint field": {"api_endpoint": "api.customer.example.com"},
+            "host field": {"host": "api.customer.com"},
+            "endpoint field": {"api_endpoint": "api.customer.com"},
             "URL authority in prose": {
-                "note": "callback=https://api.customer.example.com/v1"
+                "note": "callback=https://api.customer.com/v1"
             },
-            "explicit host label": {"note": "host:api.customer.example.com"},
+            "explicit host label": {"note": "host:api.customer.com"},
             "explicit domain label": {
-                "note": "domain=api.customer.example.com"
+                "note": "domain=api.customer.com"
             },
             "server IP": {"server": "203.0.114.8"},
             "explicit server IPv6 label": {
@@ -4173,7 +4174,46 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 self.assertTrue(fixture_safety_errors(mutation))
 
         contributing = self.read_repo_file("CONTRIBUTING.md")
-        self.assertIn("只在网络语义字段、URL authority", contributing)
+        self.assertIn("扫描所有字符串中的 IPv4/IPv6", contributing)
+        self.assertIn("真实 TLD", contributing)
+
+    def test_fixture_safety_scans_high_confidence_network_tokens_in_all_strings(self):
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+        review_network_mutations = {
+            "embedded IPv4": {"note": "peer=203.0.114.8"},
+            "embedded IPv6": {"note": "peer=2001:4860:4860::8888"},
+            "embedded com hostname": {"note": "callback=api.customer.com"},
+            "embedded io hostname": {"note": "origin=telemetry.customer.io"},
+        }
+        for label, mutation in review_network_mutations.items():
+            with self.subTest(label=label):
+                self.assertTrue(fixture_safety_errors(mutation))
+        for hostname in (
+            "api.customer.net",
+            "api.customer.org",
+            "api.customer.cn",
+        ):
+            with self.subTest(hostname=hostname):
+                self.assertTrue(
+                    fixture_safety_errors({"note": f"observed={hostname}"})
+                )
+
+        technical_and_documentation_values = {
+            "java_type": "java.lang.String",
+            "dotnet_type": "System.Collections.Generic.List",
+            "delphi_unit": "System.SysUtils",
+            "config_filename": "config.json",
+            "response_filename": "order-response.json",
+            "documentation_domain": "example.com",
+            "documentation_url": "https://example.com/sample",
+            "documentation_ipv4": "192.0.2.25",
+            "documentation_ipv6": "2001:db8::25",
+        }
+        self.assertEqual(
+            [], fixture_safety_errors(technical_and_documentation_values)
+        )
 
     def test_fixture_safety_limits_business_checks_to_identity_fields(self):
         fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
@@ -4192,6 +4232,11 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "authorization_status": "approved",
         }
         self.assertEqual([], fixture_safety_errors(non_identity_metadata))
+        for safe_status in ("approved", "denied", "pending", "not-applicable"):
+            with self.subTest(safe_status=safe_status):
+                self.assertEqual(
+                    [], fixture_safety_errors({"authorization": safe_status})
+                )
 
         identity_and_credential_mutations = {
             "customer filename": {"artifact_name": "customer.md"},
@@ -4204,6 +4249,48 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             },
             "authorization token scalar": {
                 "authorization": "token=abcdefghijklmnop"
+            },
+            "authorization Negotiate scalar": {
+                "authorization": "Negotiate TlRMTVNTUAABAAAAB4IIogAAAAAAAAAAAAAAAAAAAAAGAbEdAAAADw=="
+            },
+            "authorization Digest scalar": {
+                "authorization": (
+                    'Digest username="synthetic-user", nonce="abcdef0123456789", '
+                    'response="0123456789abcdef", signature="abcdef0123456789"'
+                )
+            },
+            "authorization arbitrary scheme": {
+                "authorization": "CustomAuth abcdefghijklmnop"
+            },
+            "arbitrary authorization header": {
+                "note": "Authorization: CustomAuth abcdefghijklmnop"
+            },
+            "authorization unsafe scalar status": {
+                "authorization": "reviewed"
+            },
+            "Negotiate authorization header": {
+                "note": "Authorization: Negotiate TlRMTVNTUAABAAAAB4IIogAAAAAA"
+            },
+            "Digest authorization header": {
+                "note": (
+                    'Authorization: Digest username="synthetic-user", '
+                    'nonce="abcdef0123456789", response="0123456789abcdef"'
+                )
+            },
+            "authorization object username": {
+                "authorization": {"username": "synthetic-user"}
+            },
+            "authorization object nonce": {
+                "authorization": {"nonce": "abcdef0123456789"}
+            },
+            "authorization object response": {
+                "authorization": {"response": "0123456789abcdef"}
+            },
+            "authorization object signature": {
+                "authorization": {"signature": "abcdef0123456789"}
+            },
+            "authorization object unsafe URL": {
+                "authorization": {"reference_url": "https://api.customer.com"}
             },
         }
         for label, mutation in identity_and_credential_mutations.items():

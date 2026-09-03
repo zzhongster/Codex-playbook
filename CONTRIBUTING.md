@@ -78,5 +78,6 @@ Guide 可以汇总成熟度不同的做法，但每项关键方法或建议必�
 - 大型证据不提交时，说明保存位置、可用性限制，并提交内容哈希。
 - 不包含密钥、访问令牌、用户名、绝对用户目录或其他敏感信息。
 - 机器可读示例的身份字段和业务主体的 identity/name/id/address/contact 字段必须使用明确的虚构标记（例如 `Sample`、`Synthetic` 或 `REPLACE`）；这同样适用于 schema 必需的 `owner`、`reviewer`、`project_id` / `project_name`。customer/client/company/tenant 的 status、role 等枚举元数据不属于身份字段。
-- 机器可读示例只在网络语义字段、URL authority 或显式 `host:` / `domain:` / `server:` 标签中检查网络标识，并只使用明确保留的虚构值：域名优先使用 `example.invalid`（也可使用 `.example`、`.test`、`.localhost`），IPv4 只使用 TEST-NET `192.0.2.0/24`、`198.51.100.0/24`、`203.0.113.0/24`，IPv6 只使用文档网段 `2001:db8::/32`。代码符号、类型名和普通文件名中的点号不表示网络主机。
-- 即使值声称是占位符，也不提交 password/token/API key 形态、真实或疑似客户/企业身份记录、网络语义位置中的非保留主机名或绝对用户路径；普通稳定 ID 和 SHA-256 不应被误报。
+- 机器可读示例扫描所有字符串中的 IPv4/IPv6，并通过保守的真实 TLD 集合识别任意文本中的 DNS hostname；域名只使用 `example.invalid`、`example.com` 等明确文档域（也可使用 `.example`、`.test`、`.localhost`），IPv4 只使用 TEST-NET `192.0.2.0/24`、`198.51.100.0/24`、`203.0.113.0/24`，IPv6 只使用文档网段 `2001:db8::/32`。`java.lang.String`、`System.Collections.Generic.List`、`System.SysUtils` 等末段不是真实 TLD 的技术符号，以及 `config.json`、`order-response.json` 等已知文件扩展，不按网络主机处理。
+- `authorization` 对象按普通元数据递归扫描；标量只允许明确的安全状态枚举。Basic、Bearer、Negotiate、Digest、自定义 scheme 加 payload，以及 username/nonce/response/signature 等认证参数一律视作凭据材料。
+- 即使值声称是占位符，也不提交 password/token/API key 形态、真实或疑似客户/企业身份记录、非保留主机名或绝对用户路径；普通稳定 ID 和 SHA-256 不应被误报。
