@@ -5,12 +5,14 @@ import base64
 import binascii
 import ipaddress
 import re
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 
 _SECRET_KEY = re.compile(
-    r"(?i)^(?:password|passwd|secret|token|"
-    r"(?:access|refresh|id)[_-]?token|api[_-]?key|apikey)$"
+    r"(?i)^(?:password|passwd|password[_-]?hash|pwd|secret|"
+    r"client[_-]?secret|token|(?:access|refresh|id)[_-]?token|"
+    r"api[_-]?key|apikey|credential|credentials|private[_-]?key|"
+    r"connection[_-]?string)$"
 )
 _CREDENTIAL_VALUE = re.compile(
     r"(?i)(?:\b(?:password|passwd|secret|(?:access[ _-]?)?token|api[ _-]?key)\b"
@@ -34,6 +36,13 @@ _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
 _AWS_ACCESS_KEY = re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")
 _TOKEN_PREFIX = re.compile(
     r"\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})\b"
+)
+_CONNECTION_STRING_CREDENTIAL = re.compile(
+    r"(?i)(?:^|;)\s*(?:user\s+id|uid|pwd|password|client\s+secret)"
+    r"\s*=\s*[^;\s][^;]*"
+)
+_PEM_PRIVATE_KEY = re.compile(
+    r"-----BEGIN (?:EC |ENCRYPTED |OPENSSH |RSA )?PRIVATE KEY-----"
 )
 _USER_PATH = re.compile(
     r"(?:/Users/[^/\s]+(?:/[^\s]*)?|/home/[^/\s]+(?:/[^\s]*)?|"
@@ -314,6 +323,8 @@ def _string_safety_errors(value, path, path_keys):
         or _JWT.search(value)
         or _AWS_ACCESS_KEY.search(value)
         or _TOKEN_PREFIX.search(value)
+        or _CONNECTION_STRING_CREDENTIAL.search(value)
+        or _PEM_PRIVATE_KEY.search(value)
     ):
         errors.append(f"{path}: credential-like value")
     if path_keys and _AUTHORIZATION_FIELD.fullmatch(path_keys[-1]):
@@ -341,15 +352,21 @@ def _string_safety_errors(value, path, path_keys):
     for match in _URL.finditer(value):
         try:
             parsed_url = urlsplit(match.group(0))
-            host = parsed_url.hostname
         except ValueError:
             errors.append(f"{path}: malformed URL authority")
             continue
-        if parsed_url.username is not None or parsed_url.password is not None:
+        authority_host, authority_error = _parse_network_authority(
+            unquote(parsed_url.netloc)
+        )
+        if authority_error == "credential/userinfo in network authority":
             errors.append(f"{path}: URL userinfo credential")
-        if isinstance(host, str):
+        elif authority_error:
+            errors.append(f"{path}: malformed URL authority")
+        else:
             errors.extend(
-                _network_identifier_errors(host, path, reject_single_label=True)
+                _network_identifier_errors(
+                    authority_host, path, reject_single_label=True
+                )
             )
 
     non_url_text = _URL.sub("", value)

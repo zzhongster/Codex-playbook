@@ -2,20 +2,20 @@ import copy
 import json
 import re
 import runpy
+import subprocess
+import sys
 import tempfile
 import unittest
-from datetime import datetime
 from pathlib import Path
 
 import yaml
-from jsonschema import (
-    Draft202012Validator,
-    FormatChecker,
-    ValidationError,
-    validators,
-)
-from referencing import Registry, Resource
+from jsonschema import Draft202012Validator
 from referencing.exceptions import NoSuchResource, Unresolvable
+from tools.product_reverse_engineering_validation import (
+    create_schema_registry,
+    create_schema_validator,
+    validate_claim_evidence_trace_bundle,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +25,9 @@ BUNDLE_VALIDATOR_PATH = (
     REPO_ROOT / "tools" / "validate_product_reverse_engineering_bundle.py"
 )
 FIXTURE_SAFETY_PATH = REPO_ROOT / "tools" / "validate_fixture_safety.py"
+VALIDATION_MODULE_PATH = (
+    REPO_ROOT / "tools" / "product_reverse_engineering_validation.py"
+)
 REQUIRED_ENTRY_FILES = (
     REPO_ROOT / "README.md",
     REPO_ROOT / "CONTRIBUTING.md",
@@ -32,6 +35,7 @@ REQUIRED_ENTRY_FILES = (
     VALIDATOR_PATH,
     BUNDLE_VALIDATOR_PATH,
     FIXTURE_SAFETY_PATH,
+    VALIDATION_MODULE_PATH,
 )
 FOUNDATION_DOCUMENTS = {
     "glossary": GUIDE_ROOT / "glossary.md",
@@ -368,14 +372,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.skipTest("schema and fixture existence is checked separately")
 
     def schema_registry(self, schemas):
-        def reject_remote_retrieval(uri):
-            raise NoSuchResource(ref=uri)
-
-        resources = [
-            (schema["$id"], Resource.from_contents(schema))
-            for schema in schemas.values()
-        ]
-        return Registry(retrieve=reject_remote_retrieval).with_resources(resources)
+        return create_schema_registry(schemas)
 
     def schema_validator(self, name, schemas=None):
         if schemas is None:
@@ -383,558 +380,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 schema_name: self.read_json_file(path)
                 for schema_name, path in SCHEMA_DOCUMENTS.items()
             }
-
-        def coverage_buckets_fit_denominator(
-            validator, enabled, instance, schema
-        ):
-            bucket_names = (
-                "numerator",
-                "unknown_count",
-                "conflicting_count",
-                "excluded_count",
-            )
-            if not enabled or not isinstance(instance, dict):
-                return
-            denominator = instance.get("denominator")
-            buckets = [instance.get(bucket) for bucket in bucket_names]
-            if type(denominator) is not int or not all(
-                type(bucket) is int for bucket in buckets
-            ):
-                return
-            if sum(buckets) != denominator:
-                yield ValidationError(
-                    "numerator + unknown_count + conflicting_count + "
-                    "excluded_count must equal denominator"
-                )
-
-        def experiment_artifacts_are_bound(validator, enabled, instance, schema):
-            if not enabled or not isinstance(instance, dict):
-                return
-
-            def parse_timestamp(value):
-                if not isinstance(value, str):
-                    return None
-                try:
-                    parsed = datetime.fromisoformat(
-                        value.replace("Z", "+00:00")
-                    )
-                except (ValueError, OverflowError):
-                    return None
-                if parsed.tzinfo is None or parsed.utcoffset() is None:
-                    return None
-                return parsed
-
-            protocol = instance.get("protocol")
-            if not isinstance(protocol, dict):
-                return
-            expected_reference = {
-                "protocol_id": protocol.get("artifact_id"),
-                "protocol_content_hash": protocol.get("content_hash"),
-            }
-            artifacts = [
-                instance.get(artifact_name)
-                for artifact_name in ("protocol", "result", "effects")
-            ]
-            complete_artifacts = [
-                artifact for artifact in artifacts if isinstance(artifact, dict)
-            ]
-            artifact_ids = [
-                artifact.get("artifact_id")
-                for artifact in complete_artifacts
-                if isinstance(artifact.get("artifact_id"), str)
-            ]
-            artifact_hashes = [
-                artifact.get("content_hash")
-                for artifact in complete_artifacts
-                if isinstance(artifact.get("content_hash"), str)
-            ]
-            if len(artifact_ids) != len(set(artifact_ids)):
-                yield ValidationError("experiment artifact IDs must be unique")
-            if len(artifact_hashes) != len(set(artifact_hashes)):
-                yield ValidationError("experiment artifact hashes must be unique")
-            if protocol.get("record_id") != protocol.get("artifact_id"):
-                yield ValidationError(
-                    "protocol record_id must equal its artifact_id"
-                )
-            claim_references = protocol.get("claim_references")
-            target_claim_references = protocol.get("target_claim_references")
-            if isinstance(claim_references, list) and isinstance(
-                target_claim_references, list
-            ) and all(
-                isinstance(reference, str)
-                for reference in (*claim_references, *target_claim_references)
-            ):
-                if not set(target_claim_references).issubset(
-                    set(claim_references)
-                ):
-                    yield ValidationError(
-                        "target claims must be declared by the protocol"
-                    )
-            for artifact_name in ("result", "effects"):
-                artifact = instance.get(artifact_name)
-                if not isinstance(artifact, dict):
-                    continue
-                if artifact.get("protocol_reference") != expected_reference:
-                    yield ValidationError(
-                        f"{artifact_name} must reference the exact frozen protocol"
-                    )
-                for context_key in ("product_version", "scope_or_module"):
-                    if artifact.get(context_key) != protocol.get(context_key):
-                        yield ValidationError(
-                            f"{artifact_name}.{context_key} must equal protocol.{context_key}"
-                        )
-
-            def inner_evidence_references(value):
-                if isinstance(value, dict):
-                    for key, child in value.items():
-                        if key in {
-                            "evidence_references",
-                            "disposition_proof_references",
-                        } and isinstance(child, list):
-                            yield from child
-                        elif key == "evidence_id" and isinstance(child, str):
-                            yield child
-                        else:
-                            yield from inner_evidence_references(child)
-                elif isinstance(value, list):
-                    for child in value:
-                        yield from inner_evidence_references(child)
-
-            for artifact_name in ("protocol", "result", "effects"):
-                artifact = instance.get(artifact_name)
-                if not isinstance(artifact, dict):
-                    continue
-                evidence_references = artifact.get("evidence_references")
-                method_definitions = artifact.get("method_definitions")
-                evidence_method_entries = artifact.get(
-                    "evidence_method_entries"
-                )
-                if (
-                    isinstance(evidence_references, list)
-                    and isinstance(method_definitions, list)
-                    and isinstance(evidence_method_entries, list)
-                ):
-                    method_ids = [
-                        method.get("method_id")
-                        for method in method_definitions
-                        if isinstance(method, dict)
-                        and isinstance(method.get("method_id"), str)
-                    ]
-                    mapped_evidence_ids = [
-                        entry.get("evidence_id")
-                        for entry in evidence_method_entries
-                        if isinstance(entry, dict)
-                        and isinstance(entry.get("evidence_id"), str)
-                    ]
-                    mapped_method_ids = {
-                        entry.get("method_id")
-                        for entry in evidence_method_entries
-                        if isinstance(entry, dict)
-                        and isinstance(entry.get("method_id"), str)
-                    }
-                    if len(method_ids) != len(set(method_ids)):
-                        yield ValidationError(
-                            f"{artifact_name} method IDs must be unique"
-                        )
-                    if all(
-                        isinstance(reference, str)
-                        for reference in evidence_references
-                    ) and (
-                        set(evidence_references) != set(mapped_evidence_ids)
-                        or len(mapped_evidence_ids)
-                        != len(set(mapped_evidence_ids))
-                    ):
-                        yield ValidationError(
-                            f"{artifact_name} evidence must map exactly once"
-                        )
-                    if set(method_ids) != mapped_method_ids:
-                        yield ValidationError(
-                            f"{artifact_name} mapped methods must equal declared methods"
-                        )
-                declared = (
-                    set(evidence_references)
-                    if isinstance(evidence_references, list)
-                    and all(
-                        isinstance(reference, str)
-                        for reference in evidence_references
-                    )
-                    else None
-                )
-                nested_payload = {
-                    key: value
-                    for key, value in artifact.items()
-                    if key != "evidence_references"
-                }
-                nested_references = list(
-                    inner_evidence_references(nested_payload)
-                )
-                undeclared = (
-                    set(nested_references) - declared
-                    if declared is not None
-                    and all(
-                        isinstance(reference, str)
-                        for reference in nested_references
-                    )
-                    else set()
-                )
-                if declared is not None and undeclared:
-                    yield ValidationError(
-                        f"{artifact_name} contains evidence references absent from its top-level index"
-                    )
-
-            result = instance.get("result")
-            if isinstance(result, dict):
-                primary_runs = result.get("run_results")
-                independent_runs = result.get("independent_reproduction_results")
-                runs = []
-                for list_name in (
-                    "run_results",
-                    "independent_reproduction_results",
-                ):
-                    run_list = result.get(list_name)
-                    if isinstance(run_list, list):
-                        runs.extend(
-                            run for run in run_list if isinstance(run, dict)
-                        )
-                run_ids = [
-                    run.get("run_id")
-                    for run in runs
-                    if isinstance(run.get("run_id"), str)
-                ]
-                if len(run_ids) != len(set(run_ids)):
-                    yield ValidationError("experiment run IDs must be unique")
-                if isinstance(primary_runs, list) and isinstance(
-                    independent_runs, list
-                ):
-                    primary_executors = {
-                        run.get("executor")
-                        for run in primary_runs
-                        if isinstance(run, dict)
-                        and isinstance(run.get("executor"), str)
-                    }
-                    independent_executors = {
-                        run.get("executor")
-                        for run in independent_runs
-                        if isinstance(run, dict)
-                        and isinstance(run.get("executor"), str)
-                    }
-                    if primary_executors & independent_executors:
-                        yield ValidationError(
-                            "independent reproduction must use a different executor"
-                        )
-                reproduction_criteria = protocol.get("reproduction_criteria")
-                if isinstance(reproduction_criteria, dict):
-                    required_runs = reproduction_criteria.get("required_runs")
-                    if type(required_runs) is int and len(runs) < required_runs:
-                        yield ValidationError(
-                            "declared runs must satisfy reproduction criteria"
-                        )
-                failed_run_ids = []
-                failed_run_count = 0
-                parsed_failed_runs = []
-                parsed_runs = []
-                for sequence, run in enumerate(runs):
-                    started_at = run.get("started_at")
-                    ended_at = run.get("ended_at")
-                    start = parse_timestamp(started_at)
-                    end = parse_timestamp(ended_at)
-                    if isinstance(started_at, str) and start is None:
-                        yield ValidationError(
-                            "run started_at must be a timezone-aware timestamp"
-                        )
-                    if isinstance(ended_at, str) and end is None:
-                        yield ValidationError(
-                            "run ended_at must be a timezone-aware timestamp"
-                        )
-                    if start is not None and end is not None:
-                        if end < start:
-                            yield ValidationError(
-                                "run ended_at must not precede started_at"
-                            )
-                        run_id = run.get("run_id")
-                        if isinstance(run_id, str):
-                            parsed_runs.append(
-                                (sequence, run_id, start, end)
-                            )
-                    run_result = run.get("result")
-                    if isinstance(run_result, str) and run_result in {
-                        "failed",
-                        "mixed",
-                    }:
-                        failed_run_count += 1
-                        run_id = run.get("run_id")
-                        if isinstance(run_id, str):
-                            failed_run_ids.append(run_id)
-                            if start is not None and end is not None:
-                                parsed_failed_runs.append(
-                                    (sequence, run_id, start, end)
-                                )
-                        observations = run.get("actual_observations")
-                        evidence = run.get("evidence_references")
-                        if not isinstance(observations, list) or not observations:
-                            yield ValidationError(
-                                "failed or mixed run requires actual observations"
-                            )
-                        if not isinstance(evidence, list) or not evidence:
-                            yield ValidationError(
-                                "failed or mixed run requires evidence references"
-                            )
-
-                first_failure = result.get("first_failure")
-                if isinstance(first_failure, dict):
-                    failure_run_id = first_failure.get("run_id")
-                    if first_failure.get("present") is True:
-                        if not isinstance(failure_run_id, str) or (
-                            failure_run_id not in failed_run_ids
-                        ):
-                            yield ValidationError(
-                                "first_failure.run_id must resolve to a failed or mixed run"
-                            )
-                        if first_failure.get("preserved_before_retry") is not True:
-                            yield ValidationError(
-                                "first failure must be preserved before retry"
-                            )
-                        if (
-                            failed_run_count > 0
-                            and len(parsed_failed_runs) == failed_run_count
-                        ):
-                            earliest_failure = min(
-                                parsed_failed_runs,
-                                key=lambda item: (item[2], item[0]),
-                            )
-                            (
-                                earliest_sequence,
-                                earliest_run_id,
-                                earliest_start,
-                                earliest_end,
-                            ) = earliest_failure
-                            if failure_run_id != earliest_run_id:
-                                yield ValidationError(
-                                    "first_failure.run_id must identify the earliest failed or mixed run"
-                                )
-                            captured_value = first_failure.get("captured_at")
-                            captured_at = parse_timestamp(captured_value)
-                            if isinstance(captured_value, str) and captured_at is None:
-                                yield ValidationError(
-                                    "first_failure.captured_at must be a timezone-aware timestamp"
-                                )
-                            if captured_at is not None:
-                                if not earliest_start <= captured_at <= earliest_end:
-                                    yield ValidationError(
-                                        "first_failure.captured_at must fall within the earliest failed run"
-                                    )
-                                subsequent_starts = [
-                                    run_start
-                                    for (
-                                        sequence,
-                                        _run_id,
-                                        run_start,
-                                        _run_end,
-                                    ) in parsed_runs
-                                    if sequence > earliest_sequence
-                                    and run_start > earliest_start
-                                ]
-                                if any(
-                                    captured_at >= retry_start
-                                    for retry_start in subsequent_starts
-                                ):
-                                    yield ValidationError(
-                                        "first failure must be captured before any subsequent retry starts"
-                                    )
-                    elif failed_run_ids:
-                        yield ValidationError(
-                            "failed or mixed runs require first_failure.present true"
-                        )
-
-            effects = instance.get("effects")
-            if isinstance(effects, dict):
-                effect_records = effects.get("side_effect_records")
-                if isinstance(effect_records, list):
-                    for effect in effect_records:
-                        if not isinstance(effect, dict):
-                            continue
-                        occurred = effect.get("occurred")
-                        disposition = effect.get("disposition")
-                        if occurred is True and isinstance(disposition, str) and (
-                            disposition == "not-created"
-                        ):
-                            yield ValidationError(
-                                "an occurred side effect cannot be not-created"
-                            )
-                        if occurred is False and isinstance(disposition, str) and (
-                            disposition != "not-created"
-                        ):
-                            yield ValidationError(
-                                "a side effect that did not occur must be not-created"
-                            )
-
-        def coverage_gates_are_consistent(validator, enabled, instance, schema):
-            if not enabled or not isinstance(instance, dict):
-                return
-            gates = instance.get("gates")
-            if not isinstance(gates, dict):
-                return
-            evidence_references = instance.get("evidence_references")
-            method_definitions = instance.get("method_definitions")
-            evidence_method_entries = instance.get("evidence_method_entries")
-            if (
-                isinstance(evidence_references, list)
-                and all(isinstance(item, str) for item in evidence_references)
-                and isinstance(method_definitions, list)
-                and isinstance(evidence_method_entries, list)
-            ):
-                method_ids = [
-                    method.get("method_id")
-                    for method in method_definitions
-                    if isinstance(method, dict)
-                    and isinstance(method.get("method_id"), str)
-                ]
-                mapped_evidence_ids = [
-                    entry.get("evidence_id")
-                    for entry in evidence_method_entries
-                    if isinstance(entry, dict)
-                    and isinstance(entry.get("evidence_id"), str)
-                ]
-                mapped_method_ids = [
-                    entry.get("method_id")
-                    for entry in evidence_method_entries
-                    if isinstance(entry, dict)
-                    and isinstance(entry.get("method_id"), str)
-                ]
-                if (
-                    len(method_ids) != len(set(method_ids))
-                    or set(method_ids) != set(mapped_method_ids)
-                ):
-                    yield ValidationError(
-                        "coverage methods must be unique and fully mapped"
-                    )
-                if (
-                    len(mapped_evidence_ids) != len(set(mapped_evidence_ids))
-                    or set(evidence_references) != set(mapped_evidence_ids)
-                ):
-                    yield ValidationError(
-                        "coverage evidence must map exactly once"
-                    )
-            gate_record_ids = []
-            for expected_gate_id, gate in gates.items():
-                if not isinstance(gate, dict):
-                    continue
-                if gate.get("gate_id") != expected_gate_id:
-                    yield ValidationError(
-                        f"{expected_gate_id}.gate_id must equal {expected_gate_id}"
-                    )
-                reference = gate.get("gate_record_reference")
-                if isinstance(reference, dict):
-                    record_id = reference.get("id")
-                    if isinstance(record_id, str):
-                        gate_record_ids.append(record_id)
-                gate_evidence = gate.get("evidence_references")
-                if (
-                    isinstance(evidence_references, list)
-                    and all(
-                        isinstance(item, str) for item in evidence_references
-                    )
-                    and isinstance(gate_evidence, list)
-                    and all(isinstance(item, str) for item in gate_evidence)
-                    and not set(gate_evidence).issubset(
-                        set(evidence_references)
-                    )
-                ):
-                    yield ValidationError(
-                        f"{expected_gate_id} evidence must resolve in the summary index"
-                    )
-            if len(gate_record_ids) != len(set(gate_record_ids)):
-                yield ValidationError(
-                    "different gates must not reuse a gate record ID"
-                )
-            dimensions = instance.get("dimensions")
-            runtime = (
-                dimensions.get("runtime")
-                if isinstance(dimensions, dict)
-                else None
-            )
-            g5 = gates.get("G5")
-            if not isinstance(runtime, dict) or not isinstance(g5, dict):
-                return
-            unknown_count = runtime.get("unknown_count")
-            conflicting_count = runtime.get("conflicting_count")
-            static_coverage = g5.get("static_non_runtime_coverage")
-            if (
-                type(unknown_count) is not int
-                or type(conflicting_count) is not int
-                or not isinstance(static_coverage, dict)
-            ):
-                return
-            unresolved_runtime = unknown_count + conflicting_count
-            gap_count = static_coverage.get("gap_count")
-            selected_branch = g5.get("selected_branch")
-            verdict = g5.get("verdict")
-            if (
-                selected_branch == "approved-static"
-                and type(gap_count) is int
-                and gap_count != unresolved_runtime
-            ):
-                yield ValidationError(
-                    "approved-static G5 gap_count must equal runtime unknown_count "
-                    "+ conflicting_count"
-                )
-            if (
-                selected_branch == "runtime"
-                and verdict == "pass"
-                and unresolved_runtime != 0
-            ):
-                yield ValidationError(
-                    "runtime G5 pass requires zero unknown and conflicting items"
-                )
-
-        def chosen_alternative_is_declared(validator, enabled, instance, schema):
-            if not enabled or not isinstance(instance, dict):
-                return
-            alternatives = instance.get("alternatives")
-            if not isinstance(alternatives, list):
-                return
-            declared = {
-                alternative.get("alternative_id")
-                for alternative in alternatives
-                if isinstance(alternative, dict)
-                and isinstance(alternative.get("alternative_id"), str)
-            }
-            alternative_ids = [
-                alternative.get("alternative_id")
-                for alternative in alternatives
-                if isinstance(alternative, dict)
-                and isinstance(alternative.get("alternative_id"), str)
-            ]
-            if len(alternative_ids) != len(set(alternative_ids)):
-                yield ValidationError("alternative_id values must be unique")
-            chosen_outcome = instance.get("chosen_outcome")
-            if isinstance(chosen_outcome, str) and chosen_outcome not in declared:
-                yield ValidationError(
-                    "chosen_outcome must resolve to a declared alternative_id"
-                )
-            if instance.get("supersedes_decision_id") == instance.get(
-                "record_id"
-            ):
-                yield ValidationError("a decision must not supersede itself")
-
-        contract_validator = validators.extend(
-            Draft202012Validator,
-            {
-                "x-coverage-buckets-fit-denominator": (
-                    coverage_buckets_fit_denominator
-                ),
-                "x-experiment-artifacts-are-bound": experiment_artifacts_are_bound,
-                "x-coverage-gates-are-consistent": coverage_gates_are_consistent,
-                "x-chosen-alternative-is-declared": (
-                    chosen_alternative_is_declared
-                ),
-            },
-        )
-        return contract_validator(
-            schemas[name],
-            registry=self.schema_registry(schemas),
-            format_checker=FormatChecker(),
-        )
+        return create_schema_validator(name, schemas=schemas)
 
     def require_all_templates(self):
         if not all(path.is_file() for path in TEMPLATE_DOCUMENTS.values()):
@@ -3232,6 +2678,18 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         mismatched_gate_id["gates"]["G2"]["gate_id"] = "G1"
         self.assertTrue(list(validator.iter_errors(mismatched_gate_id)))
 
+        wrong_gate_record_type = copy.deepcopy(coverage)
+        wrong_gate_record_type["gates"]["G2"]["gate_record_reference"][
+            "id"
+        ] = "artifact:sample.g2"
+        self.assertTrue(list(validator.iter_errors(wrong_gate_record_type)))
+
+        wrong_gap_artifact_type = copy.deepcopy(coverage)
+        wrong_gap_artifact_type["gates"]["G5"]["static_non_runtime_coverage"][
+            "gap_artifact_reference"
+        ]["id"] = "gate:sample.runtime-gap"
+        self.assertTrue(list(validator.iter_errors(wrong_gap_artifact_type)))
+
         pending_with_decision_time = copy.deepcopy(coverage)
         pending_with_decision_time["gates"]["G6"][
             "decided_at"
@@ -3705,6 +3163,31 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         )
         self.assertTrue(list(validator.iter_errors(failed_without_observation)))
 
+    def test_experiment_protocol_freeze_precedes_every_run(self):
+        self.require_all_schemas_and_examples()
+        experiment = self.read_json_file(
+            SCHEMA_EXAMPLES["experiment"]["valid"]
+        )
+        validator = self.schema_validator("experiment")
+
+        created_after_freeze = copy.deepcopy(experiment)
+        created_after_freeze["protocol"]["created_at"] = (
+            "2026-01-15T09:00:01Z"
+        )
+        self.assertTrue(list(validator.iter_errors(created_after_freeze)))
+
+        run_before_freeze = copy.deepcopy(experiment)
+        run_before_freeze["protocol"]["protocol_frozen_at"] = (
+            "2026-01-15T09:02:00Z"
+        )
+        self.assertTrue(list(validator.iter_errors(run_before_freeze)))
+
+        malformed_freeze = copy.deepcopy(experiment)
+        malformed_freeze["protocol"]["protocol_frozen_at"] = "not-a-timestamp"
+        self.assert_validation_errors_without_exception(
+            validator, malformed_freeze
+        )
+
     def test_experiment_first_failure_is_the_earliest_failure_and_precedes_retries(self):
         self.require_all_schemas_and_examples()
         experiment = self.read_json_file(
@@ -3855,9 +3338,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             BUNDLE_VALIDATOR_PATH.is_file(),
             f"missing bundle validator: {BUNDLE_VALIDATOR_PATH}",
         )
-        validate_bundle = runpy.run_path(str(BUNDLE_VALIDATOR_PATH))[
-            "validate_claim_evidence_trace_bundle"
-        ]
+        validate_bundle = validate_claim_evidence_trace_bundle
         claim = self.read_json_file(SCHEMA_EXAMPLES["claim"]["valid"])
         evidence = self.read_json_file(SCHEMA_EXAMPLES["evidence"]["valid"])
         trace = self.read_json_file(SCHEMA_EXAMPLES["trace-link"]["valid"])
@@ -4433,6 +3914,63 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 {"url": "https://api.example.invalid/sample?mode=test#result"}
             ),
         )
+
+    def test_fixture_safety_rejects_connection_private_key_and_encoded_url_secrets(self):
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+        unsafe_values = {
+            "user id connection string": {
+                "note": "Server=synthetic-host;User Id=alice;Database=sample"
+            },
+            "pwd connection string": {
+                "note": "Server=synthetic-host;Pwd=hunter2;Database=sample"
+            },
+            "password connection string": {
+                "note": "Server=synthetic-host;Password=hunter2"
+            },
+            "client secret connection string": {
+                "note": "Endpoint=example.invalid;Client Secret=abcdefghijklmnop"
+            },
+            "PEM private key": {
+                "note": "-----BEGIN PRIVATE KEY-----\nsynthetic-material"
+            },
+            "percent-decoded public host": {"url": "https://%65vil.com"},
+            "URL port out of range": {"url": "https://example.invalid:99999"},
+            "URL non-numeric port": {
+                "url": "https://example.invalid:not-a-port/sample"
+            },
+            "percent-decoded URL userinfo": {
+                "url": (
+                    "https://synthetic-user%3Asynthetic-pass%40"
+                    "example.invalid/sample"
+                )
+            },
+        }
+        for label, mutation in unsafe_values.items():
+            with self.subTest(label=label):
+                self.assertTrue(fixture_safety_errors(mutation))
+
+        for secret_key in (
+            "credential",
+            "private_key",
+            "client_secret",
+            "pwd",
+            "connection_string",
+            "password_hash",
+        ):
+            with self.subTest(secret_key=secret_key):
+                self.assertTrue(
+                    fixture_safety_errors({secret_key: "synthetic-placeholder"})
+                )
+
+        safe_urls = {
+            "documentation_url": (
+                "https://api.example.invalid:443/sample?mode=test#result"
+            ),
+            "encoded_documentation_url": "https://%65xample.invalid/sample",
+        }
+        self.assertEqual([], fixture_safety_errors(safe_urls))
 
     def test_fixture_safety_limits_business_checks_to_identity_fields(self):
         fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
@@ -7826,6 +7364,146 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         expected_test_file = REPO_ROOT / "tests" / Path(__file__).name
         self.assertEqual(expected_test_file, validator["TEST_FILE"])
         self.assertGreater(validator["load_test_suite"]().countTestCases(), 0)
+
+    def test_schema_and_bundle_validation_live_in_the_production_module(self):
+        self.assertTrue(
+            VALIDATION_MODULE_PATH.is_file(),
+            f"missing production validation module: {VALIDATION_MODULE_PATH}",
+        )
+        test_source = Path(__file__).read_text(encoding="utf-8")
+        self.assertIn(
+            "from tools.product_reverse_engineering_validation import",
+            test_source,
+        )
+        copied_implementations = [
+            "def " + name + "("
+            for name in (
+                "coverage_buckets_fit_denominator",
+                "experiment_artifacts_are_bound",
+                "coverage_gates_are_consistent",
+                "chosen_alternative_is_declared",
+            )
+        ]
+        copied_implementations.append("validators" + ".extend(")
+        for copied_implementation in copied_implementations:
+            self.assertNotIn(copied_implementation, test_source)
+        bundle_source = BUNDLE_VALIDATOR_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            "from tools.product_reverse_engineering_validation import",
+            bundle_source,
+        )
+        self.assertNotIn("def _record_index(", bundle_source)
+
+    def test_record_cli_validates_inferred_explicit_and_semantic_records(self):
+        valid_asset = SCHEMA_EXAMPLES["asset"]["valid"]
+        inferred = subprocess.run(
+            [sys.executable, str(VALIDATOR_PATH), str(valid_asset)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, inferred.returncode, inferred.stderr)
+        self.assertIn("asset", inferred.stdout)
+
+        explicit = subprocess.run(
+            [
+                sys.executable,
+                str(VALIDATOR_PATH),
+                "--schema",
+                "asset",
+                str(valid_asset),
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, explicit.returncode, explicit.stderr)
+
+        invalid_asset = subprocess.run(
+            [
+                sys.executable,
+                str(VALIDATOR_PATH),
+                str(SCHEMA_EXAMPLES["asset"]["invalid"]),
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(0, invalid_asset.returncode)
+        self.assertIn("validation error", invalid_asset.stderr.lower())
+
+        experiment = self.read_json_file(
+            SCHEMA_EXAMPLES["experiment"]["valid"]
+        )
+        experiment["protocol"]["protocol_frozen_at"] = (
+            "2026-01-15T09:02:00Z"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            semantic_failure = Path(temp_dir) / "experiment.json"
+            semantic_failure.write_text(
+                json.dumps(experiment), encoding="utf-8"
+            )
+            result = subprocess.run(
+                [sys.executable, str(VALIDATOR_PATH), str(semantic_failure)],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("protocol_frozen_at", result.stderr)
+
+    def test_record_cli_fails_closed_for_missing_or_unknown_inputs(self):
+        missing = subprocess.run(
+            [
+                sys.executable,
+                str(VALIDATOR_PATH),
+                str(REPO_ROOT / "nonexistent-record.json"),
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(0, missing.returncode)
+        self.assertIn("does not exist", missing.stderr.lower())
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            unknown_path = Path(temp_dir) / "unknown.json"
+            unknown_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0.0",
+                        "record_id": "mystery:sample.unknown",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            unknown = subprocess.run(
+                [sys.executable, str(VALIDATOR_PATH), str(unknown_path)],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertNotEqual(0, unknown.returncode)
+        self.assertIn("unknown record type", unknown.stderr.lower())
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            malformed_path = Path(temp_dir) / "malformed.json"
+            malformed_path.write_text("{", encoding="utf-8")
+            malformed = subprocess.run(
+                [sys.executable, str(VALIDATOR_PATH), str(malformed_path)],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertNotEqual(0, malformed.returncode)
+        self.assertIn("cannot read json record", malformed.stderr.lower())
 
     def test_validator_does_not_import_generic_tests_namespace(self):
         validator_source = VALIDATOR_PATH.read_text(encoding="utf-8")

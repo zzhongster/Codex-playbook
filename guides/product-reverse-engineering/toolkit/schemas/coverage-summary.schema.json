@@ -247,6 +247,34 @@
         }
       }
     },
+    "gateRecordReference": {
+      "allOf": [
+        {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/artifactReference"
+        },
+        {
+          "properties": {
+            "id": {
+              "pattern": "^gate:"
+            }
+          }
+        }
+      ]
+    },
+    "gapArtifactReference": {
+      "allOf": [
+        {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/artifactReference"
+        },
+        {
+          "properties": {
+            "id": {
+              "pattern": "^artifact:"
+            }
+          }
+        }
+      ]
+    },
     "coverageDimension": {
       "type": "object",
       "additionalProperties": false,
@@ -347,7 +375,7 @@
           ]
         },
         "gate_record_reference": {
-          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/artifactReference"
+          "$ref": "#/$defs/gateRecordReference"
         },
         "verdict": {
           "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/gateVerdict"
@@ -448,7 +476,7 @@
           "const": "G5"
         },
         "gate_record_reference": {
-          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/artifactReference"
+          "$ref": "#/$defs/gateRecordReference"
         },
         "verdict": {
           "enum": [
@@ -494,7 +522,7 @@
             "gap_artifact_reference": {
               "oneOf": [
                 {
-                  "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/artifactReference"
+                  "$ref": "#/$defs/gapArtifactReference"
                 },
                 {
                   "type": "null"
@@ -607,7 +635,7 @@
             "static_non_runtime_coverage": {
               "properties": {
                 "gap_artifact_reference": {
-                  "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/artifactReference"
+                  "$ref": "#/$defs/gapArtifactReference"
                 },
                 "gap_count": {
                   "type": "integer",
