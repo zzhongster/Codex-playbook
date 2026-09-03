@@ -51,6 +51,25 @@ STACK_DOCUMENTS = {
     "java-backends": GUIDE_ROOT / "stacks" / "java-backends.md",
     "web-products": GUIDE_ROOT / "stacks" / "web-products.md",
 }
+TEMPLATE_ROOT = GUIDE_ROOT / "toolkit" / "templates"
+TEMPLATE_DOCUMENTS = {
+    name: TEMPLATE_ROOT / f"{name}.md"
+    for name in (
+        "project-charter",
+        "asset-record",
+        "capability-record",
+        "interaction-record",
+        "rule-record",
+        "data-object-record",
+        "api-integration-record",
+        "experiment-record",
+        "claim-evidence-record",
+        "decision-record",
+        "coverage-and-freeze",
+        "as-is-to-be-trace",
+        "competitor-insight",
+    )
+}
 LINK_SOURCE_DOCUMENTS = (
     REPO_ROOT / "README.md",
     REPO_ROOT / "CONTRIBUTING.md",
@@ -264,6 +283,41 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         path = STACK_DOCUMENTS[name]
         self.assertTrue(path.is_file(), f"missing stack document: {path}")
         return path.read_text(encoding="utf-8")
+
+    def read_template_document(self, name):
+        path = TEMPLATE_DOCUMENTS[name]
+        self.assertTrue(path.is_file(), f"missing record template: {path}")
+        return path.read_text(encoding="utf-8")
+
+    def require_all_templates(self):
+        if not all(path.is_file() for path in TEMPLATE_DOCUMENTS.values()):
+            self.skipTest("template existence contract is checked separately")
+
+    def yaml_metadata_block(self, document):
+        match = re.search(r"(?ms)^```yaml\n(.+?)\n```$", document)
+        self.assertIsNotNone(match, "missing copyable YAML metadata block")
+        return match.group(1)
+
+    def assert_yaml_top_level_keys(self, metadata, expected_keys):
+        observed_keys = {
+            match.group(1)
+            for line in metadata.splitlines()
+            if (match := re.fullmatch(r"([a-z][a-z0-9_]*):(?: .*)?", line))
+        }
+        self.assertTrue(expected_keys.issubset(observed_keys))
+
+    def assert_guided_sections(self, document, headings):
+        for heading in headings:
+            with self.subTest(heading=heading):
+                section = self.section_text(document, f"## {heading}")
+                substantive_lines = [
+                    line
+                    for line in section.splitlines()[1:]
+                    if line.strip() and not line.startswith("#")
+                ]
+                self.assertGreaterEqual(
+                    len(substantive_lines), 2, f"thin template section: {heading}"
+                )
 
     def section_text(self, document, heading):
         lines = document.splitlines()
@@ -1463,6 +1517,237 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "执行时间",
         ):
             self.assertNotIn(forbidden_metadata, schema)
+
+    def test_all_human_readable_record_templates_exist(self):
+        for name, path in TEMPLATE_DOCUMENTS.items():
+            with self.subTest(template=name):
+                self.assertTrue(path.is_file(), f"missing record template: {path}")
+
+    def test_record_templates_have_copyable_metadata_and_separate_method_maturity(self):
+        self.require_all_templates()
+        required_keys = {
+            "record_id",
+            "product_version",
+            "scope_or_module",
+            "status",
+            "evidence_references",
+            "owner",
+            "validation_method",
+            "last_updated",
+            "method_maturity",
+        }
+        separation_contract = (
+            "方法成熟度只评价取证、建模或验证方法及其证据基础，不评价目标产品事实；"
+            "产品主张必须另用 `status`、`confidence` 和 `evidence_references`。"
+        )
+        for name in TEMPLATE_DOCUMENTS:
+            if name == "project-charter":
+                continue
+            with self.subTest(template=name):
+                document = self.read_template_document(name)
+                metadata = self.yaml_metadata_block(document)
+                self.assert_yaml_top_level_keys(metadata, required_keys)
+                self.assertRegex(
+                    metadata,
+                    r"(?m)^method_maturity: "
+                    r'"(cross-project-validated|project-validated|industry-established|proposed)"$',
+                )
+                self.assertIn(separation_contract, document)
+                self.assertNotRegex(document, r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
+                self.assertNotIn("/Users/", document)
+
+    def test_project_charter_fixes_authorization_and_delivery_boundaries(self):
+        self.require_all_templates()
+        document = self.read_template_document("project-charter")
+        metadata = self.yaml_metadata_block(document)
+        self.assert_yaml_top_level_keys(
+            metadata,
+            {
+                "charter_id",
+                "authorization",
+                "allowed_environments",
+                "data_policy",
+                "prohibited_actions",
+                "outputs",
+                "exclusions",
+                "risks",
+                "approval_owners",
+            },
+        )
+        self.assert_guided_sections(
+            document,
+            (
+                "决策目的与完成定义",
+                "授权与允许环境",
+                "数据政策与禁止动作",
+                "范围、输出与排除",
+                "风险、审批与停止条件",
+            ),
+        )
+        for contract in (
+            "ART-P0-AUTH",
+            "ART-G0-AUTH",
+            "当前 `pass`",
+            "授权变化时新建 charter 版本",
+            "不得原地扩大授权",
+        ):
+            self.assertIn(contract, document)
+
+    def test_asset_capability_interaction_rule_and_data_templates_cover_product_modeling(self):
+        self.require_all_templates()
+        expected_sections = {
+            "asset-record": (
+                "身份、类型与来源",
+                "版本、分类与可达性",
+                "依赖、所有权与退役",
+                "证据边界与验证",
+            ),
+            "capability-record": (
+                "参与者与业务结果",
+                "包含、排除与成功标准",
+                "场景、规则与依赖",
+                "产品表面与实现追踪",
+            ),
+            "interaction-record": (
+                "入口、角色与前置状态",
+                "可见与启用规则",
+                "输入、校验与确认",
+                "成功、失败与反馈",
+                "焦点、键盘与批量行为",
+                "后置状态与下游副作用",
+            ),
+            "rule-record": (
+                "规则陈述与适用边界",
+                "前置条件与表达式",
+                "决策表与优先级",
+                "状态影响与副作用",
+                "正例、反例与边界例",
+                "冲突、例外与未知",
+            ),
+            "data-object-record": (
+                "业务身份与技术别名",
+                "字段语义",
+                "生命周期与历史",
+                "读者、写者与派生者",
+                "所有权、保留与删除",
+            ),
+        }
+        for name, headings in expected_sections.items():
+            with self.subTest(template=name):
+                document = self.read_template_document(name)
+                self.assert_guided_sections(document, headings)
+
+        data_document = self.read_template_document("data-object-record")
+        for field in (
+            "type",
+            "precision",
+            "unit",
+            "null",
+            "default",
+            "special values",
+            "readers",
+            "writers",
+            "ownership",
+        ):
+            self.assertIn(field, data_document)
+
+    def test_integration_experiment_claim_decision_freeze_trace_and_competitor_templates_are_complete(self):
+        self.require_all_templates()
+        expected_sections = {
+            "api-integration-record": (
+                "消费者、提供者与契约",
+                "认证与授权事实",
+                "幂等、分页与错误",
+                "重试、超时与一致性",
+                "Webhook 与事件语义",
+            ),
+            "experiment-record": (
+                "不可变环境与授权",
+                "前置状态指纹与唯一哨兵",
+                "实验步骤与观测点",
+                "预期与实际观察",
+                "首个失败保全",
+                "逆序清理与残留检查",
+            ),
+            "claim-evidence-record": (
+                "原子产品主张",
+                "主张状态与置信度",
+                "支持与反驳证据",
+                "证据项与方法成熟度",
+                "状态历史、冲突与取代",
+            ),
+            "decision-record": (
+                "待决问题与权限",
+                "备选方案",
+                "选择、理由与影响",
+                "证据与不确定性",
+                "取代与重新打开",
+            ),
+            "coverage-and-freeze": (
+                "冻结分母与计算规则",
+                "九类覆盖与风险队列",
+                "G0–G7 门禁",
+                "产物生命周期",
+                "无环冻结与复核",
+            ),
+            "as-is-to-be-trace": (
+                "As-Is 观察",
+                "To-Be 需求",
+                "保留、纠正、舍弃或研究决定",
+                "迁移与兼容影响",
+                "验收与双向追踪",
+            ),
+            "competitor-insight": (
+                "可比边界",
+                "观察",
+                "推断",
+                "替代解释",
+                "置信度",
+                "战略假设",
+                "证伪方法",
+            ),
+        }
+        for name, headings in expected_sections.items():
+            with self.subTest(template=name):
+                self.assert_guided_sections(
+                    self.read_template_document(name), headings
+                )
+
+        experiment = self.read_template_document("experiment-record")
+        for contract in (
+            "environment identity",
+            "pre-state fingerprint",
+            "sentinel",
+            "expected observations",
+            "actual observations",
+            "first failure",
+            "cleanup",
+            "residual checks",
+        ):
+            self.assertIn(contract, experiment)
+
+        claim = self.read_template_document("claim-evidence-record")
+        self.assertIn("一个证据项不等于一条产品主张", claim)
+        self.assertIn("支持和反驳证据必须分列", claim)
+        self.assertNotIn("claim_maturity", claim)
+
+        freeze = self.read_template_document("coverage-and-freeze")
+        for contract in (
+            "先冻结分母，再计算分子",
+            "pending",
+            "pass",
+            "fail",
+            "not-applicable",
+            "active",
+            "replaced",
+            "withdrawn",
+            "content outputs",
+            "child/phase summaries",
+            "root summary",
+            "detached freeze manifest/attestation",
+            "不得递归包含自身哈希",
+        ):
+            self.assertIn(contract, freeze)
 
     def test_required_entry_files_exist(self):
         for path in REQUIRED_ENTRY_FILES:
