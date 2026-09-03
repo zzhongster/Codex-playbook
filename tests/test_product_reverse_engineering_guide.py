@@ -26,6 +26,12 @@ FOUNDATION_DOCUMENTS = {
     / "core"
     / "evidence-and-confidence.md",
 }
+LINK_SOURCE_DOCUMENTS = (
+    REPO_ROOT / "README.md",
+    REPO_ROOT / "CONTRIBUTING.md",
+    GUIDE_ROOT / "README.md",
+    *FOUNDATION_DOCUMENTS.values(),
+)
 ALLOWED_MATURITY_LABELS = (
     "cross-project-validated",
     "project-validated",
@@ -84,6 +90,27 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             relative_path = path.relative_to(GUIDE_ROOT).as_posix()
             with self.subTest(path=relative_path):
                 self.assertIn(f"]({relative_path})", guide)
+
+    def test_guide_readme_links_root_contributing_guide_relatively(self):
+        self.assertIn("](../../CONTRIBUTING.md)", self.read_guide())
+
+    def test_all_local_markdown_links_resolve_from_their_source_document(self):
+        for source_path in LINK_SOURCE_DOCUMENTS:
+            document = source_path.read_text(encoding="utf-8")
+            links = re.findall(r"(?<!!)\[[^\]]+\]\(([^)]+)\)", document)
+            for link in links:
+                target = link.strip().removeprefix("<").removesuffix(">")
+                if re.match(r"^[a-z][a-z0-9+.-]*:", target, re.IGNORECASE):
+                    continue
+                local_target = target.split("#", 1)[0]
+                resolved_target = (
+                    source_path if not local_target else source_path.parent / local_target
+                ).resolve()
+                with self.subTest(source=source_path, target=target):
+                    self.assertTrue(
+                        resolved_target.is_file(),
+                        f"broken local link in {source_path}: {target}",
+                    )
 
     def test_each_foundation_document_declares_one_maturity_and_applicability(self):
         maturity_pattern = re.compile(r"^\*\*证据成熟度：`([^`]+)`\*\*$")
@@ -194,6 +221,47 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             with self.subTest(trace_term=trace_term):
                 self.assertIn(trace_term, document)
         self.assertIn("没有发现证据不等于证明其不存在", document)
+
+    def test_maturity_labels_describe_guide_methods_not_product_claim_truth(self):
+        separation_statement = (
+            "四个标签只描述逆向工程方法或建议的支撑证据成熟度，"
+            "不描述目标产品主张的真假。"
+        )
+        header_statement = (
+            "文档头部的“证据成熟度”是“本指南方法或建议的支撑证据成熟度”"
+            "的机器可读简称。"
+        )
+        claim_statement = (
+            "目标产品主张使用主张状态、置信度和证据引用表达可信程度。"
+        )
+        documents = (
+            self.read_guide(),
+            self.read_repo_file("CONTRIBUTING.md"),
+            self.read_foundation_document("glossary"),
+            self.read_foundation_document("evidence-and-confidence"),
+        )
+        for index, document in enumerate(documents):
+            with self.subTest(document=index):
+                self.assertIn(separation_statement, document)
+                self.assertIn(header_statement, document)
+                self.assertIn(claim_statement, document)
+
+    def test_product_claims_can_reference_methods_with_different_maturity(self):
+        document = self.read_foundation_document("evidence-and-confidence")
+        maturity_section = self.section_text(document, "## 方法成熟度")
+        self.assertIn("多个成熟度不同的取证方法", maturity_section)
+        self.assertIn("不携带一个整体的方法成熟度", maturity_section)
+
+        glossary = self.read_foundation_document("glossary")
+        glossary_section = self.section_text(glossary, "### 置信度与成熟度")
+        self.assertIn("多个成熟度不同的取证方法", glossary_section)
+        self.assertIn("不携带一个整体的方法成熟度", glossary_section)
+
+        claim_section = self.section_text(document, "## 最小主张记录")
+        self.assertNotIn("方法成熟度", claim_section)
+        for claim_field in ("当前状态", "置信度", "证据链接"):
+            with self.subTest(claim_field=claim_field):
+                self.assertIn(claim_field, claim_section)
 
     def test_glossary_defines_core_objects_and_required_contrasts(self):
         document = self.read_foundation_document("glossary")
