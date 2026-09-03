@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0.0",
+  "record_id": "decision:sample.order-migration",
+  "version_scope": {
+    "product_version": "sample-build-1",
+    "scope_or_module": "scope:sample.orders"
+  },
+  "status": "approved",
+  "project_goal": "migration",
+  "question": "Which bounded order migration approach should the sample project validate?",
+  "alternatives": [
+    {
+      "alternative_id": "alternative:sample.compatibility-layer",
+      "description": "Use a compatibility layer for the bounded sample order flow.",
+      "benefits": [
+        "Preserves the observed external contract."
+      ],
+      "costs_and_risks": [
+        "Requires temporary dual operation."
+      ]
+    },
+    {
+      "alternative_id": "alternative:sample.direct-cutover",
+      "description": "Replace the bounded sample order flow in one cutover.",
+      "benefits": [
+        "Avoids temporary dual operation."
+      ],
+      "costs_and_risks": [
+        "Raises rollback complexity."
+      ]
+    }
+  ],
+  "chosen_outcome": "alternative:sample.compatibility-layer",
+  "owner": "Sample decision owner",
+  "evidence_references": [],
+  "impacts": [
+    {
+      "area": "migration",
+      "statement": "The sample migration retains a temporary compatibility boundary.",
+      "owner": "Sample migration owner"
+    }
+  ],
+  "risks": [
+    {
+      "risk_id": "risk:sample.dual-operation",
+      "level": "P1",
+      "statement": "Temporary dual operation may produce divergent sample states.",
+      "disposition": "mitigate"
+    }
+  ],
+  "supersedes_decision_id": null,
+  "validation_method": {
+    "method_id": "method:sample.decision-input-review",
+    "description": "Verify alternatives, evidence, ownership, and impact before approval.",
+    "reproducible": true
+  },
+  "last_updated": "2026-01-15"
+}

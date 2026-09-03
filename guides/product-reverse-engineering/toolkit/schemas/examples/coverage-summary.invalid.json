@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0.0",
+  "record_id": "coverage:sample.release-candidate",
+  "version_scope": {
+    "product_version": "sample-build-1",
+    "scope_or_module": "scope:sample.orders"
+  },
+  "status": "frozen",
+  "denominator_version": "denominator:sample.release-one",
+  "calculation_rule_version": "rule:sample.coverage-v1",
+  "exclusions": [],
+  "dimensions": {
+    "structure": {"denominator": 1, "numerator": 1, "unknown_count": 0, "conflicting_count": 0, "excluded_count": 0, "risk_counts": {"P0": 0, "P1": 0, "P2": 0}},
+    "product": {"denominator": 2, "numerator": 3, "unknown_count": 0, "conflicting_count": 0, "excluded_count": 0, "risk_counts": {"P0": 0, "P1": 1, "P2": 0}},
+    "semantic": {"denominator": 1, "numerator": 1, "unknown_count": 0, "conflicting_count": 0, "excluded_count": 0, "risk_counts": {"P0": 0, "P1": 0, "P2": 0}},
+    "runtime": {"denominator": 1, "numerator": 0, "unknown_count": 1, "conflicting_count": 0, "excluded_count": 0, "risk_counts": {"P0": 0, "P1": 1, "P2": 0}},
+    "data": {"denominator": 1, "numerator": 1, "unknown_count": 0, "conflicting_count": 0, "excluded_count": 0, "risk_counts": {"P0": 0, "P1": 0, "P2": 0}},
+    "permission": {"denominator": 1, "numerator": 1, "unknown_count": 0, "conflicting_count": 0, "excluded_count": 0, "risk_counts": {"P0": 0, "P1": 0, "P2": 0}},
+    "integration": {"denominator": 1, "numerator": 1, "unknown_count": 0, "conflicting_count": 0, "excluded_count": 0, "risk_counts": {"P0": 0, "P1": 0, "P2": 0}},
+    "non-functional": {"denominator": 1, "numerator": 1, "unknown_count": 0, "conflicting_count": 0, "excluded_count": 0, "risk_counts": {"P0": 0, "P1": 0, "P2": 0}},
+    "trace": {"denominator": 1, "numerator": 1, "unknown_count": 0, "conflicting_count": 0, "excluded_count": 0, "risk_counts": {"P0": 0, "P1": 0, "P2": 0}}
+  },
+  "gates": {
+    "G0": {"gate_record_reference": {"id": "gate:sample.g0", "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, "verdict": "pass", "evidence_references": ["evidence:sample.authorization"]},
+    "G1": {"gate_record_reference": {"id": "gate:sample.g1", "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}, "verdict": "pass", "evidence_references": ["evidence:sample.baseline"]},
+    "G2": {"gate_record_reference": {"id": "gate:sample.g2", "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}, "verdict": "pass", "evidence_references": ["evidence:sample.atlas"]},
+    "G3": {"gate_record_reference": {"id": "gate:sample.g3", "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}, "verdict": "pass", "evidence_references": ["evidence:sample.product-trace"]},
+    "G4": {"gate_record_reference": {"id": "gate:sample.g4", "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}, "verdict": "pass", "evidence_references": ["evidence:sample.semantics"]},
+    "G5": {
+      "gate_record_reference": {"id": "gate:sample.g5", "sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"},
+      "verdict": "pass",
+      "selected_branch": "approved-static",
+      "runtime_confirmation_status": "unavailable-with-approved-static-ceiling",
+      "static_non_runtime_coverage": {"gap_artifact_reference": {"id": "artifact:sample.runtime-gap", "sha256": "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"}, "gap_count": 1},
+      "evidence_references": ["evidence:sample.static-acceptance"]
+    },
+    "G6": {"gate_record_reference": {"id": "gate:sample.g6", "sha256": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}, "verdict": "pending", "evidence_references": []},
+    "G7": {"gate_record_reference": {"id": "gate:sample.g7", "sha256": "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"}, "verdict": "pending", "evidence_references": []}
+  },
+  "owner": "Sample coverage owner",
+  "validation_method": {
+    "method_id": "method:sample.coverage-recalculation",
+    "description": "Recalculate all dimensions from the frozen synthetic denominator.",
+    "reproducible": true
+  },
+  "last_updated": "2026-01-15"
+}

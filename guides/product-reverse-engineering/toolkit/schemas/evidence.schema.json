@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.invalid/product-reverse-engineering/evidence.schema.json",
+  "title": "证据记录",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_id",
+    "kind",
+    "version_scope",
+    "capture_identity",
+    "source",
+    "content_hash",
+    "redaction",
+    "availability",
+    "claim_relations",
+    "method",
+    "owner",
+    "validation_method",
+    "last_updated"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "record_id": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceId"
+    },
+    "kind": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceKind"
+    },
+    "version_scope": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/versionScope"
+    },
+    "capture_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "captured_at",
+        "captured_by",
+        "environment_id",
+        "tool_version"
+      ],
+      "properties": {
+        "captured_at": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/timestamp"
+        },
+        "captured_by": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+        },
+        "environment_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "tool_version": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "source": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sourceReference"
+    },
+    "content_hash": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sha256"
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "details"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "none",
+            "applied",
+            "not-required"
+          ]
+        },
+        "details": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "availability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "controlled_location",
+        "retention_until"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "restricted",
+            "unavailable",
+            "expired"
+          ]
+        },
+        "controlled_location": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+        },
+        "retention_until": {
+          "oneOf": [
+            {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "claim_relations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relation",
+          "claim_id"
+        ],
+        "properties": {
+          "relation": {
+            "enum": [
+              "supports",
+              "contradicts"
+            ]
+          },
+          "claim_id": {
+            "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/claimId"
+          }
+        }
+      }
+    },
+    "method": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceMethod"
+    },
+    "owner": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+    },
+    "validation_method": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/validationMethod"
+    },
+    "last_updated": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/date"
+    }
+  }
+}

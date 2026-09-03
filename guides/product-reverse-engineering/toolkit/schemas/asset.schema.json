@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.invalid/product-reverse-engineering/asset.schema.json",
+  "title": "技术资产记录",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_id",
+    "asset_type",
+    "version_scope",
+    "source",
+    "classification",
+    "reachability",
+    "integrity",
+    "status",
+    "owner",
+    "validation_method",
+    "last_updated"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "record_id": {
+      "allOf": [
+        {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        {
+          "pattern": "^asset:"
+        }
+      ]
+    },
+    "asset_type": {
+      "enum": [
+        "source-file",
+        "build-configuration",
+        "binary",
+        "package",
+        "database-schema",
+        "configuration",
+        "deployment",
+        "runtime-component",
+        "integration-contract",
+        "report-template"
+      ]
+    },
+    "version_scope": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/versionScope"
+    },
+    "source": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sourceReference"
+    },
+    "classification": {
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted",
+        "synthetic"
+      ]
+    },
+    "reachability": {
+      "enum": [
+        "present",
+        "statically-reachable",
+        "deployed",
+        "runtime-observed",
+        "unknown"
+      ]
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hash_applicability",
+        "content_hash",
+        "not_applicable_reason"
+      ],
+      "properties": {
+        "hash_applicability": {
+          "enum": [
+            "required",
+            "not-applicable"
+          ]
+        },
+        "content_hash": {
+          "oneOf": [
+            {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "not_applicable_reason": {
+          "oneOf": [
+            {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "hash_applicability": {
+                "const": "required"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "content_hash": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sha256"
+              },
+              "not_applicable_reason": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "content_hash": {
+                "type": "null"
+              },
+              "not_applicable_reason": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "status": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/recordLifecycle"
+    },
+    "owner": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+    },
+    "validation_method": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/validationMethod"
+    },
+    "last_updated": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/date"
+    }
+  }
+}

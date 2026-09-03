@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.invalid/product-reverse-engineering/decision.schema.json",
+  "title": "人类决定记录",
+  "$comment": "仓库验证器实现 x-chosen-alternative-is-declared，保证 chosen_outcome 解析到 alternatives 中的 ID。",
+  "type": "object",
+  "additionalProperties": false,
+  "x-chosen-alternative-is-declared": true,
+  "required": [
+    "schema_version",
+    "record_id",
+    "version_scope",
+    "status",
+    "project_goal",
+    "question",
+    "alternatives",
+    "chosen_outcome",
+    "owner",
+    "evidence_references",
+    "impacts",
+    "risks",
+    "supersedes_decision_id",
+    "validation_method",
+    "last_updated"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "record_id": {
+      "allOf": [
+        {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        {
+          "pattern": "^decision:"
+        }
+      ]
+    },
+    "version_scope": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/versionScope"
+    },
+    "status": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/recordLifecycle"
+    },
+    "project_goal": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/projectGoal"
+    },
+    "question": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+    },
+    "alternatives": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "alternative_id",
+          "description",
+          "benefits",
+          "costs_and_risks"
+        ],
+        "properties": {
+          "alternative_id": {
+            "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+          },
+          "description": {
+            "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+          },
+          "benefits": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+            }
+          },
+          "costs_and_risks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+            }
+          }
+        }
+      }
+    },
+    "chosen_outcome": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+    },
+    "owner": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+    },
+    "evidence_references": {
+      "allOf": [
+        {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+        },
+        {
+          "minItems": 1
+        }
+      ]
+    },
+    "impacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "area",
+          "statement",
+          "owner"
+        ],
+        "properties": {
+          "area": {
+            "enum": [
+              "user",
+              "business",
+              "migration",
+              "compatibility",
+              "security",
+              "privacy",
+              "operations",
+              "financial"
+            ]
+          },
+          "statement": {
+            "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+          },
+          "owner": {
+            "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+          }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "risk_id",
+          "level",
+          "statement",
+          "disposition"
+        ],
+        "properties": {
+          "risk_id": {
+            "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+          },
+          "level": {
+            "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/riskLevel"
+          },
+          "statement": {
+            "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+          },
+          "disposition": {
+            "enum": [
+              "mitigate",
+              "accept",
+              "avoid",
+              "transfer",
+              "open"
+            ]
+          }
+        }
+      }
+    },
+    "supersedes_decision_id": {
+      "oneOf": [
+        {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "validation_method": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/validationMethod"
+    },
+    "last_updated": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/date"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "record_id": "trace:sample.endpoint-to-claim",
+  "version_scope": {
+    "product_version": "sample-build-1",
+    "scope_or_module": "scope:sample.orders"
+  },
+  "source_id": "endpoint:sample.create-order",
+  "target_id": "claim:sample.order-created",
+  "relation": "somehow-related",
+  "evidence_status": "runtime-confirmed",
+  "evidence_references": [
+    "evidence:sample.order-response"
+  ],
+  "contexts": [
+    {
+      "context_id": "context:sample.authorized-role",
+      "description": "Synthetic operator in the approved lab environment."
+    }
+  ],
+  "owner": "Sample trace curator",
+  "validation_method": {
+    "method_id": "method:sample.trace-link-review",
+    "description": "Resolve both endpoints and verify the typed relation evidence.",
+    "reproducible": true
+  },
+  "last_updated": "2026-01-15"
+}

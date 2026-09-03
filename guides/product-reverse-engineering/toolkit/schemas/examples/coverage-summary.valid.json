@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0.0",
+  "record_id": "coverage:sample.release-candidate",
+  "version_scope": {
+    "product_version": "sample-build-1",
+    "scope_or_module": "scope:sample.orders",
+    "environment_id": "environment:sample.lab",
+    "valid_from": "2026-01-15T09:00:00Z",
+    "valid_to": null
+  },
+  "status": "frozen",
+  "denominator_version": "denominator:sample.release-one",
+  "calculation_rule_version": "rule:sample.coverage-v1",
+  "exclusions": [
+    {
+      "item_id": "surface:sample.archived-report",
+      "reason": "The approved scope excludes the retired synthetic report.",
+      "approval_reference": "decision:sample.scope-approval"
+    }
+  ],
+  "dimensions": {
+    "structure": {
+      "denominator": 10,
+      "numerator": 8,
+      "unknown_count": 1,
+      "conflicting_count": 0,
+      "excluded_count": 1,
+      "risk_counts": {"P0": 0, "P1": 1, "P2": 1}
+    },
+    "product": {
+      "denominator": 6,
+      "numerator": 5,
+      "unknown_count": 1,
+      "conflicting_count": 0,
+      "excluded_count": 0,
+      "risk_counts": {"P0": 0, "P1": 1, "P2": 0}
+    },
+    "semantic": {
+      "denominator": 5,
+      "numerator": 3,
+      "unknown_count": 1,
+      "conflicting_count": 1,
+      "excluded_count": 0,
+      "risk_counts": {"P0": 0, "P1": 1, "P2": 1}
+    },
+    "runtime": {
+      "denominator": 4,
+      "numerator": 0,
+      "unknown_count": 4,
+      "conflicting_count": 0,
+      "excluded_count": 0,
+      "risk_counts": {"P0": 0, "P1": 2, "P2": 2}
+    },
+    "data": {
+      "denominator": 7,
+      "numerator": 6,
+      "unknown_count": 1,
+      "conflicting_count": 0,
+      "excluded_count": 0,
+      "risk_counts": {"P0": 0, "P1": 1, "P2": 0}
+    },
+    "permission": {
+      "denominator": 4,
+      "numerator": 3,
+      "unknown_count": 1,
+      "conflicting_count": 0,
+      "excluded_count": 0,
+      "risk_counts": {"P0": 0, "P1": 1, "P2": 0}
+    },
+    "integration": {
+      "denominator": 3,
+      "numerator": 2,
+      "unknown_count": 1,
+      "conflicting_count": 0,
+      "excluded_count": 0,
+      "risk_counts": {"P0": 0, "P1": 1, "P2": 0}
+    },
+    "non-functional": {
+      "denominator": 3,
+      "numerator": 1,
+      "unknown_count": 2,
+      "conflicting_count": 0,
+      "excluded_count": 0,
+      "risk_counts": {"P0": 0, "P1": 1, "P2": 1}
+    },
+    "trace": {
+      "denominator": 8,
+      "numerator": 6,
+      "unknown_count": 1,
+      "conflicting_count": 1,
+      "excluded_count": 0,
+      "risk_counts": {"P0": 0, "P1": 1, "P2": 1}
+    }
+  },
+  "gates": {
+    "G0": {
+      "gate_record_reference": {"id": "gate:sample.g0", "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      "verdict": "pass",
+      "evidence_references": ["evidence:sample.authorization"]
+    },
+    "G1": {
+      "gate_record_reference": {"id": "gate:sample.g1", "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+      "verdict": "pass",
+      "evidence_references": ["evidence:sample.baseline"]
+    },
+    "G2": {
+      "gate_record_reference": {"id": "gate:sample.g2", "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+      "verdict": "pass",
+      "evidence_references": ["evidence:sample.atlas"]
+    },
+    "G3": {
+      "gate_record_reference": {"id": "gate:sample.g3", "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+      "verdict": "pass",
+      "evidence_references": ["evidence:sample.product-trace"]
+    },
+    "G4": {
+      "gate_record_reference": {"id": "gate:sample.g4", "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+      "verdict": "pass",
+      "evidence_references": ["evidence:sample.semantics"]
+    },
+    "G5": {
+      "gate_record_reference": {"id": "gate:sample.g5", "sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"},
+      "verdict": "pass",
+      "selected_branch": "approved-static",
+      "runtime_confirmation_status": "unavailable-with-approved-static-ceiling",
+      "static_non_runtime_coverage": {
+        "gap_artifact_reference": {"id": "artifact:sample.runtime-gap", "sha256": "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"},
+        "gap_count": 4
+      },
+      "evidence_references": ["evidence:sample.static-acceptance"]
+    },
+    "G6": {
+      "gate_record_reference": {"id": "gate:sample.g6", "sha256": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+      "verdict": "pending",
+      "evidence_references": []
+    },
+    "G7": {
+      "gate_record_reference": {"id": "gate:sample.g7", "sha256": "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"},
+      "verdict": "pending",
+      "evidence_references": []
+    }
+  },
+  "owner": "Sample coverage owner",
+  "validation_method": {
+    "method_id": "method:sample.coverage-recalculation",
+    "description": "Recalculate all dimensions from the frozen synthetic denominator.",
+    "reproducible": true
+  },
+  "last_updated": "2026-01-15"
+}

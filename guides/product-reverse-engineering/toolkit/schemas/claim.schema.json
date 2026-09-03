@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.invalid/product-reverse-engineering/claim.schema.json",
+  "title": "原子产品主张记录",
+  "description": "产品主张不携带整体方法成熟度；方法成熟度只属于所引用证据的方法。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_id",
+    "statement",
+    "version_scope",
+    "claim_status",
+    "confidence",
+    "confidence_rationale",
+    "evidence_relations",
+    "validation_method",
+    "owner",
+    "last_updated"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "record_id": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/claimId"
+    },
+    "statement": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?=.*\\S)[^\\r\\n]+$"
+    },
+    "version_scope": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/versionScope"
+    },
+    "claim_status": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/claimStatus"
+    },
+    "confidence": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/confidence"
+    },
+    "confidence_rationale": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+    },
+    "evidence_relations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relation",
+          "evidence_id"
+        ],
+        "properties": {
+          "relation": {
+            "enum": [
+              "supports",
+              "contradicts"
+            ]
+          },
+          "evidence_id": {
+            "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceId"
+          }
+        }
+      }
+    },
+    "validation_method": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/validationMethod"
+    },
+    "owner": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+    },
+    "last_updated": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/date"
+    }
+  }
+}

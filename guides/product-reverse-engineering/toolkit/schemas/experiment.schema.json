@@ -1,0 +1,519 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.invalid/product-reverse-engineering/experiment.schema.json",
+  "title": "不可变运行实验产物集合",
+  "description": "协议、结果和副作用处置是三个独立产物；派生产物必须绑定协议的精确 ID、哈希、版本和范围。",
+  "$comment": "仓库验证器实现 x-experiment-artifacts-are-bound，并同时检查内层证据引用属于各自产物的顶层 evidence_references。",
+  "type": "object",
+  "additionalProperties": false,
+  "x-experiment-artifacts-are-bound": true,
+  "required": [
+    "schema_version",
+    "record_id",
+    "protocol",
+    "result",
+    "effects",
+    "owner",
+    "last_updated"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "record_id": {
+      "allOf": [
+        {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        {
+          "pattern": "^experiment:"
+        }
+      ]
+    },
+    "protocol": {
+      "$ref": "#/$defs/protocol"
+    },
+    "result": {
+      "$ref": "#/$defs/result"
+    },
+    "effects": {
+      "$ref": "#/$defs/effects"
+    },
+    "owner": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+    },
+    "last_updated": {
+      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/date"
+    }
+  },
+  "$defs": {
+    "protocolReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol_id",
+        "protocol_content_hash"
+      ],
+      "properties": {
+        "protocol_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "protocol_content_hash": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "environmentIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment_id",
+        "build_hash",
+        "configuration_hash"
+      ],
+      "properties": {
+        "environment_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "build_hash": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sha256"
+        },
+        "configuration_hash": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sha256"
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observation_id",
+        "surface",
+        "statement",
+        "evidence_references"
+      ],
+      "properties": {
+        "observation_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "surface": {
+          "enum": [
+            "ui",
+            "network",
+            "log",
+            "data",
+            "message",
+            "file",
+            "external-effect",
+            "other"
+          ]
+        },
+        "statement": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+        },
+        "evidence_references": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+        }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_type",
+        "artifact_id",
+        "content_hash",
+        "status",
+        "created_at",
+        "owner",
+        "product_version",
+        "scope_or_module",
+        "evidence_references",
+        "authorization_record_id",
+        "authorization_gate_record_id",
+        "environment_identity",
+        "baseline",
+        "sentinel",
+        "steps",
+        "expected_observations",
+        "cleanup_plan",
+        "validation_method"
+      ],
+      "properties": {
+        "artifact_type": {
+          "const": "ART-P5-PROTOCOL"
+        },
+        "artifact_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "content_hash": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sha256"
+        },
+        "status": {
+          "const": "frozen"
+        },
+        "created_at": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/timestamp"
+        },
+        "owner": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+        },
+        "product_version": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+        },
+        "scope_or_module": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "evidence_references": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+        },
+        "authorization_record_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "authorization_gate_record_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "environment_identity": {
+          "$ref": "#/$defs/environmentIdentity"
+        },
+        "baseline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fingerprint",
+            "evidence_references"
+          ],
+          "properties": {
+            "fingerprint": {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sha256"
+            },
+            "evidence_references": {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+            }
+          }
+        },
+        "sentinel": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "step_id",
+              "action",
+              "observation_points",
+              "stop_condition"
+            ],
+            "properties": {
+              "step_id": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+              },
+              "action": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+              },
+              "observation_points": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+                }
+              },
+              "stop_condition": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+              }
+            }
+          }
+        },
+        "expected_observations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/observation"
+          }
+        },
+        "cleanup_plan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reverse_order_steps",
+            "residual_check"
+          ],
+          "properties": {
+            "reverse_order_steps": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+              }
+            },
+            "residual_check": {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+            }
+          }
+        },
+        "validation_method": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/validationMethod"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_type",
+        "artifact_id",
+        "content_hash",
+        "status",
+        "created_at",
+        "owner",
+        "product_version",
+        "scope_or_module",
+        "evidence_references",
+        "protocol_reference",
+        "observations",
+        "first_failure",
+        "verdict"
+      ],
+      "properties": {
+        "artifact_type": {
+          "const": "ART-P5-RESULT"
+        },
+        "artifact_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "content_hash": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sha256"
+        },
+        "status": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/recordLifecycle"
+        },
+        "created_at": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/timestamp"
+        },
+        "owner": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+        },
+        "product_version": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+        },
+        "scope_or_module": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "evidence_references": {
+          "allOf": [
+            {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        },
+        "protocol_reference": {
+          "$ref": "#/$defs/protocolReference"
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/observation"
+          }
+        },
+        "first_failure": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "present",
+            "preserved_before_retry",
+            "evidence_references"
+          ],
+          "properties": {
+            "present": {
+              "type": "boolean"
+            },
+            "preserved_before_retry": {
+              "type": "boolean"
+            },
+            "evidence_references": {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+            }
+          }
+        },
+        "verdict": {
+          "enum": [
+            "pass",
+            "fail",
+            "inconclusive",
+            "not-run"
+          ]
+        }
+      }
+    },
+    "effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_type",
+        "artifact_id",
+        "content_hash",
+        "status",
+        "created_at",
+        "owner",
+        "product_version",
+        "scope_or_module",
+        "evidence_references",
+        "protocol_reference",
+        "side_effects",
+        "cleanup",
+        "residual_checks"
+      ],
+      "properties": {
+        "artifact_type": {
+          "const": "ART-P5-EFFECTS"
+        },
+        "artifact_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "content_hash": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sha256"
+        },
+        "status": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/recordLifecycle"
+        },
+        "created_at": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/timestamp"
+        },
+        "owner": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+        },
+        "product_version": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+        },
+        "scope_or_module": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        "evidence_references": {
+          "allOf": [
+            {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        },
+        "protocol_reference": {
+          "$ref": "#/$defs/protocolReference"
+        },
+        "side_effects": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "effect_id",
+              "kind",
+              "target",
+              "occurred",
+              "disposition",
+              "evidence_references"
+            ],
+            "properties": {
+              "effect_id": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+              },
+              "kind": {
+                "enum": [
+                  "write",
+                  "egress",
+                  "message",
+                  "file",
+                  "cache",
+                  "none-expected"
+                ]
+              },
+              "target": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+              },
+              "occurred": {
+                "type": "boolean"
+              },
+              "disposition": {
+                "enum": [
+                  "retained",
+                  "reversed",
+                  "deleted",
+                  "not-created"
+                ]
+              },
+              "evidence_references": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+              }
+            }
+          }
+        },
+        "cleanup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "steps",
+            "result",
+            "evidence_references"
+          ],
+          "properties": {
+            "steps": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+              }
+            },
+            "result": {
+              "enum": [
+                "pass",
+                "fail",
+                "partial",
+                "not-run"
+              ]
+            },
+            "evidence_references": {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+            }
+          }
+        },
+        "residual_checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "surface",
+              "result",
+              "evidence_references"
+            ],
+            "properties": {
+              "surface": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+              },
+              "result": {
+                "enum": [
+                  "clear",
+                  "residual-found",
+                  "not-authorized"
+                ]
+              },
+              "evidence_references": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

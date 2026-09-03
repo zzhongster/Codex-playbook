@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json",
+  "title": "产品逆向记录共享定义",
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "stableId": {
+      "type": "string",
+      "description": "类型前缀加 8–64 位大写十六进制，或类型前缀加至少两段小写限定逻辑键。显示名和路径不能作为 ID。",
+      "oneOf": [
+        {
+          "pattern": "^[a-z][a-z0-9-]*:[A-F0-9]{8,64}$"
+        },
+        {
+          "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\\.[a-z0-9-]+)+$"
+        }
+      ]
+    },
+    "evidenceId": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/stableId"
+        },
+        {
+          "pattern": "^evidence:"
+        }
+      ]
+    },
+    "claimId": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/stableId"
+        },
+        {
+          "pattern": "^claim:"
+        }
+      ]
+    },
+    "methodId": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/stableId"
+        },
+        {
+          "pattern": "^method:"
+        }
+      ]
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]+)?(?:Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "methodMaturity": {
+      "enum": [
+        "cross-project-validated",
+        "project-validated",
+        "industry-established",
+        "proposed"
+      ]
+    },
+    "claimStatus": {
+      "enum": [
+        "observed",
+        "statically-supported",
+        "runtime-confirmed",
+        "domain-confirmed",
+        "inferred",
+        "conflicting",
+        "unsupported",
+        "deprecated",
+        "superseded"
+      ]
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "riskLevel": {
+      "enum": [
+        "P0",
+        "P1",
+        "P2"
+      ]
+    },
+    "evidenceKind": {
+      "enum": [
+        "runtime",
+        "static",
+        "interface",
+        "documentary",
+        "domain",
+        "derived"
+      ]
+    },
+    "relationKind": {
+      "enum": [
+        "supports",
+        "contradicts",
+        "exposes",
+        "implements",
+        "reads",
+        "writes",
+        "calls",
+        "emits",
+        "derived-from",
+        "validates",
+        "replaces",
+        "replaced-by"
+      ]
+    },
+    "projectGoal": {
+      "enum": [
+        "rewrite",
+        "migration",
+        "replacement",
+        "acquisition-due-diligence",
+        "competitor-research"
+      ]
+    },
+    "gateVerdict": {
+      "enum": [
+        "pending",
+        "pass",
+        "fail",
+        "not-applicable"
+      ]
+    },
+    "recordLifecycle": {
+      "enum": [
+        "draft",
+        "in-review",
+        "active",
+        "approved",
+        "frozen",
+        "replaced",
+        "withdrawn"
+      ]
+    },
+    "versionScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_version",
+        "scope_or_module"
+      ],
+      "properties": {
+        "product_version": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "scope_or_module": {
+          "$ref": "#/$defs/stableId"
+        },
+        "environment_id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "valid_from": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "valid_to": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "owner": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "validationMethod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method_id",
+        "description",
+        "reproducible"
+      ],
+      "properties": {
+        "method_id": {
+          "$ref": "#/$defs/methodId"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "reproducible": {
+          "type": "boolean"
+        }
+      }
+    },
+    "evidenceMethod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method_id",
+        "maturity",
+        "description"
+      ],
+      "properties": {
+        "method_id": {
+          "$ref": "#/$defs/methodId"
+        },
+        "maturity": {
+          "$ref": "#/$defs/methodMaturity"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "sourceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "locator",
+        "content_hash"
+      ],
+      "properties": {
+        "source_id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "locator": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "content_hash": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "evidenceReferences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceId"
+      },
+      "uniqueItems": true
+    },
+    "riskCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "P0",
+        "P1",
+        "P2"
+      ],
+      "properties": {
+        "P0": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "P1": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "P2": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "artifactReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  }
+}

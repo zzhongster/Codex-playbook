@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "record_id": "evidence:sample.order-response",
+  "kind": "screen-scrape-magic",
+  "version_scope": {
+    "product_version": "sample-build-1",
+    "scope_or_module": "scope:sample.orders"
+  },
+  "capture_identity": {
+    "captured_at": "2026-01-15T09:05:00Z",
+    "captured_by": "Sample operator",
+    "environment_id": "environment:sample.lab",
+    "tool_version": "sample-capture 1.0"
+  },
+  "source": {
+    "source_id": "source:sample.runtime-session",
+    "locator": "controlled://sample/evidence/order-response.json",
+    "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "redaction": {
+    "status": "not-required",
+    "details": "The fixture contains synthetic identifiers only."
+  },
+  "availability": {
+    "status": "available",
+    "controlled_location": "artifact-store://sample/evidence/order-response",
+    "retention_until": null
+  },
+  "claim_relations": [
+    {
+      "relation": "supports",
+      "claim_id": "claim:sample.order-created"
+    }
+  ],
+  "method": {
+    "method_id": "method:sample.authorized-runtime-observation",
+    "maturity": "proposed",
+    "description": "Replay the approved synthetic scenario and preserve its observable response."
+  },
+  "owner": "Sample evidence custodian",
+  "validation_method": {
+    "method_id": "method:sample.evidence-hash-check",
+    "description": "Verify the evidence content hash in the controlled store.",
+    "reproducible": true
+  },
+  "last_updated": "2026-01-15"
+}

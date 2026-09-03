@@ -1,4 +1,5 @@
 import copy
+import json
 import re
 import runpy
 import tempfile
@@ -6,6 +7,14 @@ import unittest
 from pathlib import Path
 
 import yaml
+from jsonschema import (
+    Draft202012Validator,
+    FormatChecker,
+    ValidationError,
+    validators,
+)
+from referencing import Registry, Resource
+from referencing.exceptions import NoSuchResource, Unresolvable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -73,6 +82,29 @@ TEMPLATE_DOCUMENTS = {
         "competitor-insight",
     )
 }
+SCHEMA_ROOT = GUIDE_ROOT / "toolkit" / "schemas"
+SCHEMA_NAMES = (
+    "definitions",
+    "asset",
+    "evidence",
+    "claim",
+    "trace-link",
+    "experiment",
+    "decision",
+    "coverage-summary",
+)
+RECORD_SCHEMA_NAMES = tuple(name for name in SCHEMA_NAMES if name != "definitions")
+SCHEMA_DOCUMENTS = {
+    name: SCHEMA_ROOT / f"{name}.schema.json" for name in SCHEMA_NAMES
+}
+SCHEMA_EXAMPLES = {
+    name: {
+        validity: SCHEMA_ROOT / "examples" / f"{name}.{validity}.json"
+        for validity in ("valid", "invalid")
+    }
+    for name in RECORD_SCHEMA_NAMES
+}
+SCHEMA_BASE_URI = "https://schemas.example.invalid/product-reverse-engineering/"
 LINK_SOURCE_DOCUMENTS = (
     REPO_ROOT / "README.md",
     REPO_ROOT / "CONTRIBUTING.md",
@@ -305,6 +337,137 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         path = TEMPLATE_DOCUMENTS[name]
         self.assertTrue(path.is_file(), f"missing record template: {path}")
         return path.read_text(encoding="utf-8")
+
+    def read_json_file(self, path):
+        self.assertTrue(path.is_file(), f"missing JSON file: {path}")
+        with path.open(encoding="utf-8") as stream:
+            return json.load(stream)
+
+    def require_all_schemas_and_examples(self):
+        paths = list(SCHEMA_DOCUMENTS.values())
+        paths.extend(
+            path
+            for examples in SCHEMA_EXAMPLES.values()
+            for path in examples.values()
+        )
+        if not all(path.is_file() for path in paths):
+            self.skipTest("schema and fixture existence is checked separately")
+
+    def schema_registry(self, schemas):
+        def reject_remote_retrieval(uri):
+            raise NoSuchResource(ref=uri)
+
+        resources = [
+            (schema["$id"], Resource.from_contents(schema))
+            for schema in schemas.values()
+        ]
+        return Registry(retrieve=reject_remote_retrieval).with_resources(resources)
+
+    def schema_validator(self, name, schemas=None):
+        if schemas is None:
+            schemas = {
+                schema_name: self.read_json_file(path)
+                for schema_name, path in SCHEMA_DOCUMENTS.items()
+            }
+
+        def numerator_not_above_denominator(
+            validator, enabled, instance, schema
+        ):
+            if (
+                enabled
+                and isinstance(instance, dict)
+                and isinstance(instance.get("numerator"), int)
+                and isinstance(instance.get("denominator"), int)
+                and instance["numerator"] > instance["denominator"]
+            ):
+                yield ValidationError(
+                    "numerator must not be greater than denominator"
+                )
+
+        def experiment_artifacts_are_bound(validator, enabled, instance, schema):
+            if not enabled or not isinstance(instance, dict):
+                return
+            protocol = instance.get("protocol")
+            if not isinstance(protocol, dict):
+                return
+            expected_reference = {
+                "protocol_id": protocol.get("artifact_id"),
+                "protocol_content_hash": protocol.get("content_hash"),
+            }
+            for artifact_name in ("result", "effects"):
+                artifact = instance.get(artifact_name)
+                if not isinstance(artifact, dict):
+                    continue
+                if artifact.get("protocol_reference") != expected_reference:
+                    yield ValidationError(
+                        f"{artifact_name} must reference the exact frozen protocol"
+                    )
+                for context_key in ("product_version", "scope_or_module"):
+                    if artifact.get(context_key) != protocol.get(context_key):
+                        yield ValidationError(
+                            f"{artifact_name}.{context_key} must equal protocol.{context_key}"
+                        )
+
+            def inner_evidence_references(value):
+                if isinstance(value, dict):
+                    for key, child in value.items():
+                        if key == "evidence_references" and isinstance(child, list):
+                            yield from child
+                        else:
+                            yield from inner_evidence_references(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        yield from inner_evidence_references(child)
+
+            for artifact_name in ("protocol", "result", "effects"):
+                artifact = instance.get(artifact_name)
+                if not isinstance(artifact, dict):
+                    continue
+                declared = set(artifact.get("evidence_references", []))
+                nested_payload = {
+                    key: value
+                    for key, value in artifact.items()
+                    if key != "evidence_references"
+                }
+                undeclared = set(inner_evidence_references(nested_payload)) - declared
+                if undeclared:
+                    yield ValidationError(
+                        f"{artifact_name} contains evidence references absent from its top-level index"
+                    )
+
+        def chosen_alternative_is_declared(validator, enabled, instance, schema):
+            if not enabled or not isinstance(instance, dict):
+                return
+            alternatives = instance.get("alternatives")
+            if not isinstance(alternatives, list):
+                return
+            declared = {
+                alternative.get("alternative_id")
+                for alternative in alternatives
+                if isinstance(alternative, dict)
+            }
+            if instance.get("chosen_outcome") not in declared:
+                yield ValidationError(
+                    "chosen_outcome must resolve to a declared alternative_id"
+                )
+
+        contract_validator = validators.extend(
+            Draft202012Validator,
+            {
+                "x-numerator-not-above-denominator": (
+                    numerator_not_above_denominator
+                ),
+                "x-experiment-artifacts-are-bound": experiment_artifacts_are_bound,
+                "x-chosen-alternative-is-declared": (
+                    chosen_alternative_is_declared
+                ),
+            },
+        )
+        return contract_validator(
+            schemas[name],
+            registry=self.schema_registry(schemas),
+            format_checker=FormatChecker(),
+        )
 
     def require_all_templates(self):
         if not all(path.is_file() for path in TEMPLATE_DOCUMENTS.values()):
@@ -2206,6 +2369,309 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         for name, path in TEMPLATE_DOCUMENTS.items():
             with self.subTest(template=name):
                 self.assertTrue(path.is_file(), f"missing record template: {path}")
+
+    def test_all_machine_readable_schemas_and_examples_exist(self):
+        for name, path in SCHEMA_DOCUMENTS.items():
+            with self.subTest(schema=name):
+                self.assertTrue(path.is_file(), f"missing JSON Schema: {path}")
+        for name, examples in SCHEMA_EXAMPLES.items():
+            for validity, path in examples.items():
+                with self.subTest(schema=name, fixture=validity):
+                    self.assertTrue(path.is_file(), f"missing schema fixture: {path}")
+
+    def test_all_json_schemas_are_valid_draft_2020_12_documents(self):
+        self.require_all_schemas_and_examples()
+        observed_ids = set()
+        for name, path in SCHEMA_DOCUMENTS.items():
+            with self.subTest(schema=name):
+                schema = self.read_json_file(path)
+                self.assertEqual(
+                    "https://json-schema.org/draft/2020-12/schema",
+                    schema.get("$schema"),
+                )
+                self.assertEqual(
+                    f"{SCHEMA_BASE_URI}{name}.schema.json", schema.get("$id")
+                )
+                Draft202012Validator.check_schema(schema)
+                if name != "definitions":
+                    self.assertIs(schema.get("additionalProperties"), False)
+                observed_ids.add(schema["$id"])
+        self.assertEqual(len(SCHEMA_NAMES), len(observed_ids))
+
+    def test_shared_schema_enums_are_exact_and_closed(self):
+        self.require_all_schemas_and_examples()
+        definitions = self.read_json_file(SCHEMA_DOCUMENTS["definitions"])[
+            "$defs"
+        ]
+        expected = {
+            "methodMaturity": set(ALLOWED_MATURITY_LABELS),
+            "claimStatus": CLAIM_STATUSES,
+            "riskLevel": {"P0", "P1", "P2"},
+            "evidenceKind": {
+                "runtime",
+                "static",
+                "interface",
+                "documentary",
+                "domain",
+                "derived",
+            },
+            "relationKind": CORE_RELATION_KINDS | {"replaced-by"},
+            "projectGoal": {
+                "rewrite",
+                "migration",
+                "replacement",
+                "acquisition-due-diligence",
+                "competitor-research",
+            },
+            "gateVerdict": GATE_VERDICTS,
+        }
+        for definition_name, expected_values in expected.items():
+            with self.subTest(definition=definition_name):
+                self.assertEqual(
+                    expected_values, set(definitions[definition_name]["enum"])
+                )
+
+    def test_schema_examples_have_one_valid_and_one_invalid_contract(self):
+        self.require_all_schemas_and_examples()
+        schemas = {
+            name: self.read_json_file(path)
+            for name, path in SCHEMA_DOCUMENTS.items()
+        }
+        for name, examples in SCHEMA_EXAMPLES.items():
+            validator = self.schema_validator(name, schemas)
+            valid = self.read_json_file(examples["valid"])
+            invalid = self.read_json_file(examples["invalid"])
+            with self.subTest(schema=name, fixture="valid"):
+                self.assertEqual([], list(validator.iter_errors(valid)))
+            with self.subTest(schema=name, fixture="invalid"):
+                self.assertTrue(list(validator.iter_errors(invalid)))
+
+    def test_schema_references_are_local_and_remote_retrieval_is_denied(self):
+        self.require_all_schemas_and_examples()
+        schemas = {
+            name: self.read_json_file(path)
+            for name, path in SCHEMA_DOCUMENTS.items()
+        }
+
+        def collect_refs(value):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key == "$ref":
+                        yield child
+                    else:
+                        yield from collect_refs(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from collect_refs(child)
+
+        definitions_id = schemas["definitions"]["$id"]
+        for name, schema in schemas.items():
+            with self.subTest(schema=name):
+                for reference in collect_refs(schema):
+                    self.assertTrue(
+                        reference.startswith("#/")
+                        or reference.startswith(f"{definitions_id}#/$defs/"),
+                        f"non-local schema reference: {reference}",
+                    )
+
+        broken = copy.deepcopy(schemas)
+        broken["asset"]["properties"]["record_id"] = {
+            "$ref": f"{SCHEMA_BASE_URI}missing.schema.json#/$defs/stableId"
+        }
+        with self.assertRaisesRegex(Exception, "Unresolvable") as raised:
+            list(
+                self.schema_validator("asset", broken).iter_errors(
+                    self.read_json_file(SCHEMA_EXAMPLES["asset"]["valid"])
+                )
+            )
+        self.assertIsInstance(raised.exception.__cause__, Unresolvable)
+        self.assertIsInstance(
+            raised.exception.__cause__.__context__, NoSuchResource
+        )
+
+    def test_schema_closed_enums_reject_unknown_values(self):
+        self.require_all_schemas_and_examples()
+        mutations = {
+            "evidence": (
+                ("kind", "unknown-kind"),
+                ("method", "maturity", "unknown-maturity"),
+            ),
+            "claim": (("claim_status", "unknown-status"),),
+            "trace-link": (("relation", "unknown-relation"),),
+            "decision": (
+                ("project_goal", "unknown-goal"),
+                ("risks", 0, "level", "P9"),
+            ),
+            "coverage-summary": (("gates", "G0", "verdict", "unknown-gate"),),
+        }
+        for name, paths in mutations.items():
+            validator = self.schema_validator(name)
+            valid = self.read_json_file(SCHEMA_EXAMPLES[name]["valid"])
+            for mutation_path in paths:
+                with self.subTest(schema=name, mutation=mutation_path):
+                    mutated = copy.deepcopy(valid)
+                    *parents, replacement = mutation_path
+                    target = mutated
+                    for key in parents[:-1]:
+                        target = target[key]
+                    target[parents[-1]] = replacement
+                    self.assertTrue(list(validator.iter_errors(mutated)))
+
+    def test_schemas_reject_unknown_fields_at_record_and_nested_boundaries(self):
+        self.require_all_schemas_and_examples()
+        asset = self.read_json_file(SCHEMA_EXAMPLES["asset"]["valid"])
+        asset["undeclared"] = True
+        self.assertTrue(list(self.schema_validator("asset").iter_errors(asset)))
+
+        evidence = self.read_json_file(SCHEMA_EXAMPLES["evidence"]["valid"])
+        evidence["capture_identity"]["undeclared"] = True
+        self.assertTrue(
+            list(self.schema_validator("evidence").iter_errors(evidence))
+        )
+
+    def test_claim_schema_rejects_product_level_method_maturity(self):
+        self.require_all_schemas_and_examples()
+        claim = self.read_json_file(SCHEMA_EXAMPLES["claim"]["valid"])
+        claim["method_maturity"] = "project-validated"
+        self.assertTrue(list(self.schema_validator("claim").iter_errors(claim)))
+        claim["maturity"] = "project-validated"
+        self.assertTrue(list(self.schema_validator("claim").iter_errors(claim)))
+
+    def test_stable_id_schema_rejects_blanks_and_display_names(self):
+        self.require_all_schemas_and_examples()
+        asset = self.read_json_file(SCHEMA_EXAMPLES["asset"]["valid"])
+        validator = self.schema_validator("asset")
+        for invalid_id in ("", " ", "Orders service", "asset"):
+            with self.subTest(stable_id=invalid_id):
+                mutated = copy.deepcopy(asset)
+                mutated["record_id"] = invalid_id
+                self.assertTrue(list(validator.iter_errors(mutated)))
+
+        uppercase_hex = copy.deepcopy(asset)
+        uppercase_hex["record_id"] = "asset:DEADBEEF"
+        self.assertEqual([], list(validator.iter_errors(uppercase_hex)))
+
+        lowercase_unqualified_hex = copy.deepcopy(asset)
+        lowercase_unqualified_hex["record_id"] = "asset:deadbeef"
+        self.assertTrue(list(validator.iter_errors(lowercase_unqualified_hex)))
+
+    def test_record_ids_use_schema_specific_type_prefixes(self):
+        self.require_all_schemas_and_examples()
+        for name in RECORD_SCHEMA_NAMES:
+            with self.subTest(schema=name):
+                fixture = self.read_json_file(SCHEMA_EXAMPLES[name]["valid"])
+                fixture["record_id"] = "other:sample.wrong-type"
+                self.assertTrue(
+                    list(self.schema_validator(name).iter_errors(fixture))
+                )
+
+    def test_schema_validation_enforces_iso_dates_and_timestamps(self):
+        self.require_all_schemas_and_examples()
+        asset = self.read_json_file(SCHEMA_EXAMPLES["asset"]["valid"])
+        asset["last_updated"] = "15 January someday"
+        self.assertTrue(list(self.schema_validator("asset").iter_errors(asset)))
+
+        evidence = self.read_json_file(SCHEMA_EXAMPLES["evidence"]["valid"])
+        evidence["capture_identity"]["captured_at"] = "yesterday"
+        self.assertTrue(
+            list(self.schema_validator("evidence").iter_errors(evidence))
+        )
+
+    def test_coverage_semantics_reject_overcount_and_invalid_g5_combinations(self):
+        self.require_all_schemas_and_examples()
+        coverage = self.read_json_file(
+            SCHEMA_EXAMPLES["coverage-summary"]["valid"]
+        )
+        validator = self.schema_validator("coverage-summary")
+
+        overcount = copy.deepcopy(coverage)
+        overcount["dimensions"]["product"]["numerator"] = (
+            overcount["dimensions"]["product"]["denominator"] + 1
+        )
+        self.assertTrue(list(validator.iter_errors(overcount)))
+
+        hidden_static_gap = copy.deepcopy(coverage)
+        hidden_static_gap["gates"]["G5"]["static_non_runtime_coverage"][
+            "gap_count"
+        ] = 0
+        self.assertTrue(list(validator.iter_errors(hidden_static_gap)))
+
+        runtime_not_confirmed = copy.deepcopy(coverage)
+        runtime_not_confirmed["gates"]["G5"].update(
+            {
+                "verdict": "pass",
+                "selected_branch": "runtime",
+                "runtime_confirmation_status": "required",
+                "static_non_runtime_coverage": {
+                    "gap_artifact_reference": None,
+                    "gap_count": 0,
+                },
+                "evidence_references": ["evidence:sample.runtime-gate"],
+            }
+        )
+        self.assertTrue(list(validator.iter_errors(runtime_not_confirmed)))
+
+        not_applicable = copy.deepcopy(coverage)
+        not_applicable["gates"]["G5"]["verdict"] = "not-applicable"
+        self.assertTrue(list(validator.iter_errors(not_applicable)))
+
+    def test_experiment_schema_requires_three_bound_immutable_artifacts(self):
+        self.require_all_schemas_and_examples()
+        experiment = self.read_json_file(
+            SCHEMA_EXAMPLES["experiment"]["valid"]
+        )
+        validator = self.schema_validator("experiment")
+
+        mutable_single_package = copy.deepcopy(experiment)
+        del mutable_single_package["effects"]
+        self.assertTrue(list(validator.iter_errors(mutable_single_package)))
+
+        wrong_protocol = copy.deepcopy(experiment)
+        wrong_protocol["result"]["protocol_reference"]["protocol_id"] = (
+            "artifact:sample.other-protocol"
+        )
+        self.assertTrue(list(validator.iter_errors(wrong_protocol)))
+
+        divergent_context = copy.deepcopy(experiment)
+        divergent_context["effects"]["product_version"] = "build:sample.other"
+        self.assertTrue(list(validator.iter_errors(divergent_context)))
+
+        undeclared_inner_evidence = copy.deepcopy(experiment)
+        undeclared_inner_evidence["result"]["observations"][0][
+            "evidence_references"
+        ] = ["evidence:sample.not-in-result-index"]
+        self.assertTrue(list(validator.iter_errors(undeclared_inner_evidence)))
+
+    def test_decision_chosen_outcome_must_resolve_to_a_declared_alternative(self):
+        self.require_all_schemas_and_examples()
+        decision = self.read_json_file(SCHEMA_EXAMPLES["decision"]["valid"])
+        decision["chosen_outcome"] = "alternative:sample.not-declared"
+        self.assertTrue(list(self.schema_validator("decision").iter_errors(decision)))
+
+    def test_schema_examples_are_synthetic_and_contain_no_secret_shaped_fields(self):
+        self.require_all_schemas_and_examples()
+        prohibited_keys = re.compile(
+            r"(?i)^(?:password|passwd|secret|access[_-]?token|api[_-]?key)$"
+        )
+        for name, examples in SCHEMA_EXAMPLES.items():
+            for validity, path in examples.items():
+                fixture = self.read_json_file(path)
+                serialized = json.dumps(fixture, ensure_ascii=False)
+                with self.subTest(schema=name, fixture=validity):
+                    self.assertNotIn("/Users/", serialized)
+                    self.assertNotIn("/home/", serialized)
+                    self.assertNotRegex(serialized, r"[A-Za-z]:\\\\Users\\\\")
+
+                    def assert_no_secret_fields(value):
+                        if isinstance(value, dict):
+                            for key, child in value.items():
+                                self.assertNotRegex(key, prohibited_keys)
+                                assert_no_secret_fields(child)
+                        elif isinstance(value, list):
+                            for child in value:
+                                assert_no_secret_fields(child)
+
+                    assert_no_secret_fields(fixture)
 
     def test_development_dependencies_include_the_yaml_parser(self):
         requirements = self.read_repo_file("requirements-dev.txt").splitlines()
