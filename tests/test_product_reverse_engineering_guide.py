@@ -135,14 +135,20 @@ OPERATING_PROFILE_OUTPUTS = {
         "artifact:assessment.unverified-areas",
     },
     "full-program": {
-        "artifact:program.wave-plan",
-        "artifact:program.phase-hash-chain",
-        "artifact:program.parent-child-summaries",
-        "artifact:program.review-cadence",
-        "artifact:program.gate-ledger",
-        "artifact:program.delta-ledger",
-        "artifact:program.purpose-delivery",
-        "artifact:program.cluster-split-freeze-ledger",
+        "artifact:program.wave-plan.v1",
+        "artifact:program.phase-hash-index.phase8.v07",
+        "artifact:program.phase-summary-index.phase8.v07",
+        "artifact:program.review-cadence.phase8.v04",
+        "artifact:program.gate-ledger.g7.v06",
+        "artifact:program.delta-ledger.phase8.v01",
+        "artifact:program.purpose-delivery.phase8.v1",
+        "artifact:program.cluster-split-freeze-ledger.phase8.v1",
+        "ART-P8-RELEASE",
+        "ART-P8-APPROVAL",
+        "ART-G7-RELEASE",
+        "ART-P8-ROOT-SUMMARY",
+        "ART-P8-FREEZE",
+        "artifact:program.profile-exit-verification.phase8.v1",
     },
 }
 OPERATING_PROFILE_OUTPUT_CONTENT = {
@@ -206,14 +212,23 @@ OPERATING_PROFILE_OUTPUT_CONTENT = {
         },
     },
     "full-program": {
-        "artifact:program.wave-plan": {"dependency-ordered-waves"},
-        "artifact:program.phase-hash-chain": {"phase-input-and-output-hashes"},
-        "artifact:program.parent-child-summaries": {"child-hash-bound-parent-summaries"},
-        "artifact:program.review-cadence": {"scheduled-and-risk-triggered-reviews"},
-        "artifact:program.gate-ledger": {"domain-runtime-coverage-freeze-verdicts"},
-        "artifact:program.delta-ledger": {"append-only-delta-impact-and-revalidation"},
-        "artifact:program.purpose-delivery": {"selected-purpose-specific-delivery-and-exclusion-map"},
-        "artifact:program.cluster-split-freeze-ledger": {"split-and-child-freeze-decisions"},
+        "artifact:program.wave-plan.v1": {"dependency-ordered-waves"},
+        "artifact:program.phase-hash-index.phase8.v07": {"phase-input-and-output-hashes"},
+        "artifact:program.phase-summary-index.phase8.v07": {"child-hash-bound-parent-summaries"},
+        "artifact:program.review-cadence.phase8.v04": {"scheduled-and-risk-triggered-reviews"},
+        "artifact:program.gate-ledger.g7.v06": {"domain-runtime-coverage-freeze-verdicts"},
+        "artifact:program.delta-ledger.phase8.v01": {"append-only-delta-impact-and-revalidation"},
+        "artifact:program.purpose-delivery.phase8.v1": {
+            "selected-purpose-specific-delivery-and-exclusion-map",
+            "selected-core-purpose-output-id-and-hash",
+        },
+        "artifact:program.cluster-split-freeze-ledger.phase8.v1": {"split-and-child-freeze-decisions"},
+        "ART-P8-RELEASE": {"purpose-and-limit-release-notes"},
+        "ART-P8-APPROVAL": {"immutable-human-release-decision"},
+        "ART-G7-RELEASE": {"derived-g7-without-self-ledger-input"},
+        "ART-P8-ROOT-SUMMARY": {"root-summary-without-self-or-freeze-input"},
+        "ART-P8-FREEZE": {"detached-root-and-content-attestation"},
+        "artifact:program.profile-exit-verification.phase8.v1": {"root-and-freeze-verification"},
     },
 }
 LAYOUT_PARTITION_CONTRACT = {
@@ -657,7 +672,11 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.assertEqual(
                 {"output_id", "content_contract", "incomplete_when"}, set(output)
             )
-            self.assertRegex(output["output_id"], STABLE_ID_PATTERN)
+            self.assertTrue(
+                STABLE_ID_PATTERN.fullmatch(output["output_id"])
+                or re.fullmatch(r"ART-(?:P8|G7)-[A-Z0-9-]+", output["output_id"]),
+                f"invalid operating-profile output ID: {output['output_id']}",
+            )
             self.assertIsInstance(output["content_contract"], list)
             self.assertTrue(output["content_contract"])
             self.assertIsInstance(output["incomplete_when"], list)
@@ -819,6 +838,8 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "delta_handling",
                 "purpose_outputs",
                 "cluster_policy",
+                "artifact_dag",
+                "terminal_sequence",
             },
             set(controls),
         )
@@ -832,13 +853,27 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             set(phase_hashes["required_fields"]),
         )
         self.assertEqual(
-            ["content-outputs", "phase-summary", "root-summary", "freeze-attestation"],
+            [
+                "phase8-content",
+                "human-approval",
+                "derived-g7",
+                "child-phase-summaries",
+                "root-summary",
+                "detached-freeze",
+                "profile-exit-verification",
+            ],
             phase_hashes["generation_order"],
         )
 
         summaries = controls["parent_child_summaries"]
         self.assertEqual(
-            {"child_summary_required", "parent_inputs_are_child_hashes", "self_hash_excluded"},
+            {
+                "append_only_ids",
+                "parent_inputs_are_child_hashes",
+                "self_hash_excluded",
+                "freeze_excluded",
+                "final_snapshot_before_root",
+            },
             set(summaries),
         )
         self.assertTrue(all(summaries.values()))
@@ -862,18 +897,53 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
 
         delta = controls["delta_handling"]
         self.assertEqual(
-            {"append_new_records", "impact_analysis", "reopen_affected_gates", "targeted_revalidation"},
+            {
+                "append_new_records",
+                "impact_analysis",
+                "reopen_affected_gates",
+                "targeted_revalidation",
+                "final_phase8_snapshot_before_freeze",
+            },
             set(delta),
         )
         self.assertTrue(all(delta.values()))
 
         purpose_outputs = controls["purpose_outputs"]
-        self.assertEqual({"rewrite", "competitor-research"}, set(purpose_outputs))
-        self.assertNotEqual(
-            set(purpose_outputs["rewrite"]), set(purpose_outputs["competitor-research"])
+        self.assertEqual(
+            {
+                "rewrite",
+                "migration",
+                "replacement",
+                "acquisition-due-diligence",
+                "competitor-research",
+            },
+            set(purpose_outputs),
         )
-        self.assertTrue(purpose_outputs["rewrite"])
-        self.assertTrue(purpose_outputs["competitor-research"])
+        expected_purpose_artifacts = {
+            "rewrite": "ART-P8-REWRITE",
+            "migration": "ART-P8-MIGRATION",
+            "replacement": "ART-P8-REPLACEMENT",
+            "acquisition-due-diligence": "ART-P8-DUE-DILIGENCE",
+            "competitor-research": "ART-P8-COMPETITOR",
+        }
+        purpose_artifact_ids = set()
+        for purpose, expected_artifact in expected_purpose_artifacts.items():
+            branch = purpose_outputs[purpose]
+            self.assertEqual(
+                {
+                    "output_artifact",
+                    "required_content",
+                    "exclusion_map",
+                    "difference_map",
+                },
+                set(branch),
+            )
+            self.assertEqual(expected_artifact, branch["output_artifact"])
+            self.assertTrue(branch["required_content"])
+            self.assertTrue(branch["exclusion_map"])
+            self.assertTrue(branch["difference_map"])
+            purpose_artifact_ids.add(branch["output_artifact"])
+        self.assertEqual(5, len(purpose_artifact_ids))
 
         cluster = controls["cluster_policy"]
         self.assertEqual(
@@ -903,6 +973,179 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "wave-8-delta-calibration",
             ],
             schedule_ids,
+        )
+
+        dag = controls["artifact_dag"]
+        self.assertEqual(
+            {"external_inputs", "artifact_versions", "final_snapshot_ids"},
+            set(dag),
+        )
+        external_inputs = set(dag["external_inputs"])
+        self.assertTrue({"ART-P0-AUTH", "ART-P1-BASELINE"}.issubset(external_inputs))
+        self.assertEqual(len(dag["external_inputs"]), len(external_inputs))
+
+        nodes = dag["artifact_versions"]
+        self.assertIsInstance(nodes, list)
+        self.assertGreaterEqual(len(nodes), 30)
+        nodes_by_id = {}
+        prior_ids = set(external_inputs)
+        concepts = {}
+        schedule_sequence = {
+            step["step_id"]: step["sequence"] for step in schedule
+        }
+        for sequence, node in enumerate(nodes, start=1):
+            self.assertEqual(
+                {
+                    "sequence",
+                    "artifact_id",
+                    "concept_id",
+                    "produced_in",
+                    "inputs",
+                    "predecessor_id",
+                    "predecessor_relation",
+                    "replaced_by",
+                    "lifecycle",
+                    "terminal_stage",
+                },
+                set(node),
+            )
+            self.assertEqual(sequence, node["sequence"])
+            artifact_id = node["artifact_id"]
+            self.assertNotIn(artifact_id, nodes_by_id)
+            self.assertNotIn(artifact_id, node["inputs"])
+            self.assertTrue(
+                set(node["inputs"]).issubset(prior_ids),
+                f"future or unresolved input for {artifact_id}: {set(node['inputs']) - prior_ids}",
+            )
+            self.assertIn(node["produced_in"], schedule_sequence)
+            self.assertRegex(node["concept_id"], STABLE_ID_PATTERN)
+            self.assertIn(node["predecessor_relation"], {"root", "replaces", "parent"})
+            self.assertIn(node["lifecycle"], {"active", "replaced"})
+            self.assertIn(
+                node["terminal_stage"],
+                {
+                    "pre-terminal",
+                    "phase8-content",
+                    "human-approval",
+                    "derived-g7",
+                    "child-phase-summaries",
+                    "root-summary",
+                    "detached-freeze",
+                    "profile-exit-verification",
+                    "phase9-delta",
+                },
+            )
+            nodes_by_id[artifact_id] = node
+            prior_ids.add(artifact_id)
+            concepts.setdefault(node["concept_id"], []).append(node)
+
+        for concept_id, versions in concepts.items():
+            first = versions[0]
+            self.assertEqual("root", first["predecessor_relation"], concept_id)
+            self.assertIsNone(first["predecessor_id"], concept_id)
+            for previous, current in zip(versions, versions[1:]):
+                self.assertEqual(previous["artifact_id"], current["predecessor_id"])
+                self.assertIn(current["predecessor_relation"], {"replaces", "parent"})
+                self.assertIn(previous["artifact_id"], current["inputs"])
+                if current["predecessor_relation"] == "replaces":
+                    self.assertEqual(current["artifact_id"], previous["replaced_by"])
+                    self.assertEqual("replaced", previous["lifecycle"])
+                else:
+                    self.assertIsNone(previous["replaced_by"])
+                    self.assertEqual("active", previous["lifecycle"])
+            self.assertIsNone(versions[-1]["replaced_by"])
+            self.assertEqual("active", versions[-1]["lifecycle"])
+
+        schedule_outputs = []
+        available_schedule_inputs = set(external_inputs)
+        for step in schedule:
+            self.assertTrue(
+                set(step["inputs"]).issubset(available_schedule_inputs),
+                f"schedule uses future input in {step['step_id']}",
+            )
+            self.assertTrue(set(step["outputs"]).isdisjoint(schedule_outputs))
+            schedule_outputs.extend(step["outputs"])
+            available_schedule_inputs.update(step["outputs"])
+        self.assertEqual(set(nodes_by_id), set(schedule_outputs))
+        self.assertEqual(len(schedule_outputs), len(set(schedule_outputs)))
+        for node in nodes:
+            self.assertIn(
+                node["artifact_id"],
+                next(
+                    step["outputs"]
+                    for step in schedule
+                    if step["step_id"] == node["produced_in"]
+                ),
+            )
+
+        terminal = controls["terminal_sequence"]
+        expected_terminal_stages = [
+            "phase8-content",
+            "human-approval",
+            "derived-g7",
+            "child-phase-summaries",
+            "root-summary",
+            "detached-freeze",
+            "profile-exit-verification",
+        ]
+        self.assertEqual(expected_terminal_stages, [item["stage"] for item in terminal])
+        terminal_artifact_ids = []
+        for item in terminal:
+            self.assertEqual({"stage", "artifact_ids"}, set(item))
+            self.assertTrue(item["artifact_ids"])
+            for artifact_id in item["artifact_ids"]:
+                self.assertEqual(item["stage"], nodes_by_id[artifact_id]["terminal_stage"])
+                terminal_artifact_ids.append(artifact_id)
+        terminal_sequences = [nodes_by_id[item]["sequence"] for item in terminal_artifact_ids]
+        self.assertEqual(terminal_sequences, sorted(terminal_sequences))
+
+        g7 = nodes_by_id["ART-G7-RELEASE"]
+        self.assertTrue(
+            {
+                "ART-P8-APPROVAL",
+                "ART-P8-RELEASE",
+                "artifact:program.purpose-delivery.phase8.v1",
+            }.issubset(set(g7["inputs"]))
+        )
+        self.assertTrue(
+            all("gate-ledger" not in item for item in g7["inputs"]),
+            "G7 must not depend on a ledger that includes G7",
+        )
+        self.assertTrue(
+            set(g7["inputs"]).isdisjoint({"ART-P8-ROOT-SUMMARY", "ART-P8-FREEZE"})
+        )
+
+        root = nodes_by_id["ART-P8-ROOT-SUMMARY"]
+        self.assertIn("artifact:program.phase-summary-index.phase8.v07", root["inputs"])
+        self.assertIn("ART-G7-RELEASE", root["inputs"])
+        self.assertNotIn("ART-P8-ROOT-SUMMARY", root["inputs"])
+        self.assertNotIn("ART-P8-FREEZE", root["inputs"])
+
+        freeze = nodes_by_id["ART-P8-FREEZE"]
+        self.assertIn("ART-P8-ROOT-SUMMARY", freeze["inputs"])
+        self.assertNotIn("ART-P8-FREEZE", freeze["inputs"])
+        final_snapshots = set(dag["final_snapshot_ids"])
+        self.assertEqual(
+            {
+                "artifact:program.phase-hash-index.phase8.v07",
+                "artifact:program.phase-summary-index.phase8.v07",
+                "artifact:program.review-cadence.phase8.v04",
+                "artifact:program.gate-ledger.g7.v06",
+                "artifact:program.delta-ledger.phase8.v01",
+            },
+            final_snapshots,
+        )
+        self.assertTrue(final_snapshots.issubset(set(freeze["inputs"])))
+        self.assertTrue(
+            all(nodes_by_id[item]["sequence"] < freeze["sequence"] for item in final_snapshots)
+        )
+
+        exit_verification = nodes_by_id[
+            "artifact:program.profile-exit-verification.phase8.v1"
+        ]
+        self.assertEqual(
+            {"ART-G7-RELEASE", "ART-P8-ROOT-SUMMARY", "ART-P8-FREEZE"},
+            set(exit_verification["inputs"]),
         )
 
     def markdown_table(self, document, heading):
@@ -7604,6 +7847,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
     def test_readme_validation_scope_includes_core_and_access_tracks(self):
         validation = self.section_text(self.read_guide(), "## 验证")
         self.assertIn("九项核心模块和三条访问轨道", validation)
+        self.assertIn("三套运行配置", validation)
 
     def test_operator_project_layout_has_single_authorities_and_safe_evidence_storage(self):
         document = self.read_operator_toolkit_document("project-layout")
@@ -7836,20 +8080,20 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assert_full_program_controls(
             metadata["full_program_controls"], metadata["schedule"]
         )
-        self.assertEqual("G7", metadata["exit_gate"]["gate_id"])
+        self.assertEqual("PROFILE-FULL-EXIT", metadata["exit_gate"]["gate_id"])
         self.assertEqual(
-            [f"G{index}" for index in range(7)],
+            [f"G{index}" for index in range(8)],
             metadata["exit_gate"]["required_predecessor_gates"],
         )
         schedule_by_id = {
             step["step_id"]: step for step in metadata["schedule"]
         }
         self.assertIn(
-            "artifact:program.delta-ledger",
+            "artifact:program.delta-ledger.phase8.v01",
             schedule_by_id["wave-7-freeze-delivery"]["outputs"],
         )
         self.assertIn(
-            "artifact:program.delta-ledger",
+            "artifact:program.delta-ledger.phase9.v02",
             schedule_by_id["wave-8-delta-calibration"]["outputs"],
         )
         escalation_triggers = {
@@ -7938,6 +8182,54 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.assert_full_program_controls(
                 unsafe_cluster_freeze, full_program["schedule"]
             )
+
+        future_input = copy.deepcopy(full_program["full_program_controls"])
+        artifact_versions = future_input["artifact_dag"]["artifact_versions"]
+        artifact_versions[0]["inputs"].append(artifact_versions[-1]["artifact_id"])
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(future_input, full_program["schedule"])
+
+        self_dependency = copy.deepcopy(full_program["full_program_controls"])
+        artifact_versions = self_dependency["artifact_dag"]["artifact_versions"]
+        artifact_versions[0]["inputs"].append(artifact_versions[0]["artifact_id"])
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(self_dependency, full_program["schedule"])
+
+        duplicate_artifact_id = copy.deepcopy(full_program["full_program_controls"])
+        artifact_versions = duplicate_artifact_id["artifact_dag"]["artifact_versions"]
+        artifact_versions[1]["artifact_id"] = artifact_versions[0]["artifact_id"]
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                duplicate_artifact_id, full_program["schedule"]
+            )
+
+        broken_version_chain = copy.deepcopy(full_program["full_program_controls"])
+        phase_hash_versions = [
+            node
+            for node in broken_version_chain["artifact_dag"]["artifact_versions"]
+            if node["concept_id"] == "artifact-concept:program.phase-hash-index"
+        ]
+        phase_hash_versions[1]["predecessor_id"] = None
+        phase_hash_versions[1]["predecessor_relation"] = "root"
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                broken_version_chain, full_program["schedule"]
+            )
+
+        g7_self_ledger = copy.deepcopy(full_program["full_program_controls"])
+        g7_node = next(
+            node
+            for node in g7_self_ledger["artifact_dag"]["artifact_versions"]
+            if node["artifact_id"] == "ART-G7-RELEASE"
+        )
+        g7_node["inputs"].append("artifact:program.gate-ledger.g7.v06")
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(g7_self_ledger, full_program["schedule"])
+
+        missing_purpose = copy.deepcopy(full_program["full_program_controls"])
+        del missing_purpose["purpose_outputs"]["migration"]
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(missing_purpose, full_program["schedule"])
 
     def test_guide_readme_links_every_foundation_document_relatively(self):
         guide = self.read_guide()
