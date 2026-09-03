@@ -4120,21 +4120,32 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 self.assertTrue(fixture_safety_errors(mutation))
 
-        synthetic_placeholders = {
-            field_name: "synthetic-placeholder"
-            for field_name in secret_field_names
-        }
-        synthetic_placeholders["nested"] = {
-            "items": [
-                {"note": "api-key=synthetic-placeholder"},
-                {"note": "password hash: synthetic-placeholder"},
-            ]
-        }
-        synthetic_placeholders["access_token_status"] = "disabled"
-        synthetic_placeholders["password_policy"] = "required"
-        self.assertEqual(
-            [], fixture_safety_errors(synthetic_placeholders)
+        marker_bypass_mutations = (
+            {"db_password": "synthetic-placeholder"},
+            {"note": "client_secret=sample-secret-value"},
+            {"nested": {"aws_secret_access_key": "test-only-key"}},
+            {"note": "AccountKey=fixture-account-key"},
         )
+        for mutation in marker_bypass_mutations:
+            with self.subTest(marker_mutation=mutation):
+                self.assertTrue(fixture_safety_errors(mutation))
+
+        safe_references = {
+            "credential_reference": "artifact:ABCDEF12",
+            "secret_reference": "evidence:ABCDEF12",
+            "access_token_status": "disabled",
+            "password_policy": "required",
+        }
+        self.assertEqual(
+            [], fixture_safety_errors(safe_references)
+        )
+
+        contributing = (REPO_ROOT / "CONTRIBUTING.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("credential_reference", contributing)
+        self.assertIn("secret_reference", contributing)
+        self.assertIn("不得保存凭据状占位值", contributing)
 
     def test_fixture_safety_limits_business_checks_to_identity_fields(self):
         fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[

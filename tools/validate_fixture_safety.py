@@ -201,24 +201,9 @@ def _is_secret_label(label):
     )
 
 
-def _is_safe_secret_placeholder(value):
-    if value is None:
-        return True
-    if not isinstance(value, str):
-        return False
-    normalized = value.strip()
-    return bool(
-        not normalized
-        or _FICTIONAL_MARKER.search(normalized)
-        or normalized.lower()
-        in {"<redacted>", "[redacted]", "redacted", "not-applicable", "not-set"}
-    )
-
-
 def _has_credential_assignment(value):
     return any(
         _is_secret_label(match.group("label"))
-        and not _is_safe_secret_placeholder(match.group("value"))
         for match in _CREDENTIAL_ASSIGNMENT.finditer(value)
     )
 
@@ -475,9 +460,7 @@ def fixture_safety_errors(value):
             for key, nested in child.items():
                 key_text = str(key)
                 child_path = f"{path}.{key_text}"
-                if _is_secret_label(key_text) and not _is_safe_secret_placeholder(
-                    nested
-                ):
+                if _is_secret_label(key_text):
                     errors.append(f"{child_path}: secret-shaped key")
                 if (
                     _AUTHORIZATION_FIELD.fullmatch(key_text)
