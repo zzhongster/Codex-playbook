@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Value-aware safety checks for published synthetic JSON fixtures."""
+"""Key-path-aware safety checks for published synthetic JSON fixtures."""
 
 import ipaddress
 import re
@@ -7,12 +7,14 @@ from urllib.parse import urlsplit
 
 
 _SECRET_KEY = re.compile(
-    r"(?i)^(?:password|passwd|secret|access[_-]?token|api[_-]?key)$"
+    r"(?i)^(?:authorization|password|passwd|secret|token|"
+    r"(?:access|refresh|id)[_-]?token|api[_-]?key|apikey)$"
 )
 _CREDENTIAL_VALUE = re.compile(
     r"(?i)(?:\b(?:password|passwd|secret|(?:access[ _-]?)?token|api[ _-]?key)\b"
     r"\s*[:=]\s*[\"']?[A-Za-z0-9._~+/-]{6,}|"
-    r"\bbearer\s+[A-Za-z0-9._~+/-]{8,})"
+    r"\b(?:authorization\s*[:=]\s*)?bearer\s+[A-Za-z0-9._~+/-]{8,}|"
+    r"\b(?:authorization\s*[:=]\s*)?basic\s+[A-Za-z0-9+/]{8,}={0,2})"
 )
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
 _AWS_ACCESS_KEY = re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")
@@ -26,7 +28,8 @@ _USER_PATH = re.compile(
     r"[^\\/\s]+(?:[\\/][^\s]*)?)"
 )
 _LABELED_BUSINESS_RECORD = re.compile(
-    r"(?i)\b(?:customer|business|company|contact)[_-]?(?:name|id)?\s*[:=]\s*"
+    r"(?i)\b(?:customer|client|business|company|tenant|contact)"
+    r"[_-]?(?:record|name|id)?\s*[:=]\s*"
     r"(?!sample\b|synthetic\b|example\b|test\b)[^\s,;]+"
 )
 _URL = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s\"'<>]+", re.IGNORECASE)
@@ -36,17 +39,34 @@ _IPV6 = re.compile(
     r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}"
     r"[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])"
 )
-_FILE_EXTENSIONS = {
-    "csv",
-    "html",
-    "json",
-    "log",
-    "md",
-    "txt",
-    "xml",
-    "yaml",
-    "yml",
-}
+_STABLE_ID = re.compile(
+    r"(?:[a-z][a-z0-9-]*:[A-F0-9]{8,64}|"
+    r"[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+)"
+)
+_SAFE_FIXTURE_FILENAME = re.compile(
+    r"(?i)(?:template|sample|synthetic|example|fixture|test|demo)"
+    r"(?:[-_][a-z0-9-]+)*\.(?:csv|html|json|log|md|txt|xml|yaml|yml)"
+)
+_SAFE_SYNTHETIC_LOGICAL_KEY = re.compile(
+    r"(?i)(?:[a-z][a-z0-9-]*:)?"
+    r"(?:demo|example|fictional|fixture|sample|synthetic|template|test)"
+    r"(?:\.[a-z0-9-]+)+"
+)
+_FICTIONAL_MARKER = re.compile(
+    r"(?i)(?:^|[^a-z0-9])(?:demo|example|fictional|fixture|replace|sample|"
+    r"synthetic|template|test)(?:[^a-z0-9]|$)"
+)
+_IDENTITY_FIELD = re.compile(
+    r"(?i)^(?:username|user_name|login_user|owner|reviewer|approver|"
+    r"approved_by|captured_by|executor|executed_by)$"
+)
+_PROJECT_IDENTITY_FIELD = re.compile(
+    r"(?i)^project(?:[_-]?(?:id|key|name|owner|slug))?$"
+)
+_BUSINESS_SUBJECT_FIELD = re.compile(
+    r"(?i)(?:^|[_-])(?:business(?:es)?|clients?|companies|company|"
+    r"customers?|tenants?)(?=$|[_-]|record|name|id)"
+)
 
 _RESERVED_SUFFIXES = (".invalid", ".example", ".test", ".localhost")
 _RESERVED_IPV4 = tuple(
@@ -73,7 +93,31 @@ def _reserved_host(host):
     return address in _RESERVED_IPV6
 
 
-def _string_safety_errors(value, path):
+def _stable_id_field(path_keys):
+    if not path_keys:
+        return False
+    leaf = path_keys[-1].lower()
+    parent = path_keys[-2].lower() if len(path_keys) > 1 else ""
+    return (
+        leaf == "id"
+        or leaf.endswith("_id")
+        or leaf.endswith("_reference")
+        or leaf.endswith("_references")
+        or parent.endswith("_references")
+        or leaf in {"chosen", "source_id", "target_id"}
+    )
+
+
+def _requires_fictional_metadata(path_keys):
+    if not path_keys:
+        return False
+    leaf = path_keys[-1]
+    if _IDENTITY_FIELD.fullmatch(leaf) or _PROJECT_IDENTITY_FIELD.fullmatch(leaf):
+        return True
+    return any(_BUSINESS_SUBJECT_FIELD.search(key) for key in path_keys)
+
+
+def _string_safety_errors(value, path, path_keys):
     errors = []
     if (
         _CREDENTIAL_VALUE.search(value)
@@ -86,6 +130,12 @@ def _string_safety_errors(value, path):
         errors.append(f"{path}: absolute user path")
     if _LABELED_BUSINESS_RECORD.search(value):
         errors.append(f"{path}: customer or business record-like value")
+    if _requires_fictional_metadata(path_keys) and not _FICTIONAL_MARKER.search(
+        value
+    ):
+        errors.append(
+            f"{path}: identity or business metadata is not explicitly fictional"
+        )
 
     url_hosts = set()
     for match in _URL.finditer(value):
@@ -104,13 +154,17 @@ def _string_safety_errors(value, path):
 
     non_url_text = _URL.sub("", value)
     normalized_non_url_text = non_url_text.strip(" \t\r\n[](){}<>,;\"'")
+    is_typed_stable_id = bool(
+        _stable_id_field(path_keys) and _STABLE_ID.fullmatch(normalized_non_url_text)
+    )
+    is_explicitly_safe_filename = bool(
+        _SAFE_FIXTURE_FILENAME.fullmatch(normalized_non_url_text)
+    )
+    is_explicitly_synthetic_logical_key = bool(
+        _SAFE_SYNTHETIC_LOGICAL_KEY.fullmatch(normalized_non_url_text)
+    )
     for domain_match in _DOMAIN.finditer(non_url_text):
         domain = domain_match.group(0).lower()
-        left_context = non_url_text[: domain_match.start()]
-        is_qualified_id = bool(
-            re.search(r"(?:^|[^a-z0-9-])[a-z][a-z0-9-]*:$", left_context, re.I)
-        )
-        is_filename = domain.rsplit(".", 1)[-1] in _FILE_EXTENSIONS
         explicitly_labeled = bool(
             re.search(
                 rf"(?i)\b(?:host|hostname|domain|server)\s*[:=]\s*{re.escape(domain)}\b",
@@ -119,8 +173,9 @@ def _string_safety_errors(value, path):
         )
         if (
             domain in url_hosts
-            or is_qualified_id
-            or is_filename
+            or is_typed_stable_id
+            or is_explicitly_safe_filename
+            or is_explicitly_synthetic_logical_key
             or _reserved_host(domain)
         ):
             continue
@@ -157,19 +212,19 @@ def fixture_safety_errors(value):
 
     errors = []
 
-    def visit(child, path):
+    def visit(child, path, path_keys):
         if isinstance(child, dict):
             for key, nested in child.items():
                 key_text = str(key)
                 child_path = f"{path}.{key_text}"
                 if _SECRET_KEY.fullmatch(key_text):
                     errors.append(f"{child_path}: secret-shaped key")
-                visit(nested, child_path)
+                visit(nested, child_path, (*path_keys, key_text))
         elif isinstance(child, list):
             for position, nested in enumerate(child):
-                visit(nested, f"{path}[{position}]")
+                visit(nested, f"{path}[{position}]", path_keys)
         elif isinstance(child, str):
-            errors.extend(_string_safety_errors(child, path))
+            errors.extend(_string_safety_errors(child, path, path_keys))
 
-    visit(value, "$")
+    visit(value, "$", ())
     return sorted(set(errors))

@@ -4048,6 +4048,86 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         ):
             self.assertIn(documented_reservation, contributing)
 
+    def test_fixture_safety_combines_key_paths_with_values_and_has_narrow_exemptions(self):
+        self.assertTrue(
+            FIXTURE_SAFETY_PATH.is_file(),
+            f"missing fixture safety validator: {FIXTURE_SAFETY_PATH}",
+        )
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+
+        review_mutations = {
+            "real username field": {"username": "alice"},
+            "real customer name field": {"customer_name": "Acme Corporation"},
+            "basic authorization": {
+                "note": "Authorization: Basic dXNlcjpwYXNzd29yZA=="
+            },
+            "bearer authorization": {
+                "note": "Authorization: Bearer abcdefghijklmnop"
+            },
+            "colon-prefixed public host": {
+                "note": "host:api.customer.example.com"
+            },
+            "customer record filename": {"artifact_name": "customer.md"},
+        }
+        for label, mutation in review_mutations.items():
+            with self.subTest(label=label):
+                self.assertTrue(fixture_safety_errors(mutation))
+
+        for identity_key in ("username", "user_name", "login_user"):
+            with self.subTest(identity_key=identity_key):
+                self.assertTrue(fixture_safety_errors({identity_key: "alice"}))
+        for business_subject in ("customer", "client", "company", "tenant"):
+            with self.subTest(business_subject=business_subject):
+                self.assertTrue(
+                    fixture_safety_errors(
+                        {business_subject: {"name": "Acme Corporation"}}
+                    )
+                )
+        for generic_metadata in ("owner", "project_name"):
+            with self.subTest(generic_metadata=generic_metadata):
+                self.assertTrue(
+                    fixture_safety_errors({generic_metadata: "Acme Migration"})
+                )
+
+        exemption_escape_mutations = {
+            "safe filename plus credential": {
+                "note": "template.md password=abcdefghijklmnop"
+            },
+            "stable ID plus public host": {
+                "record_id": (
+                    "evidence:sample.normal-id host:api.customer.example.com"
+                )
+            },
+            "synthetic key plus user path": {
+                "note": "sample.logical-key at /Users/alice/private/result.json"
+            },
+        }
+        for label, mutation in exemption_escape_mutations.items():
+            with self.subTest(label=label):
+                self.assertTrue(fixture_safety_errors(mutation))
+
+        explicitly_fictional_values = {
+            "username": "synthetic-user",
+            "customer_name": "Synthetic Customer",
+            "owner": "Sample owner",
+            "project_name": "Synthetic migration project",
+            "url": "https://api.example.invalid/v1/template",
+            "host_note": "host:api.example.invalid",
+            "documentation_ipv4": "192.0.2.25",
+            "documentation_ipv6": "2001:db8::25",
+            "artifact_name": "template.md",
+            "record_id": "evidence:sample.normal-id",
+            "content_hash": (
+                "sha256:abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+            ),
+        }
+        self.assertEqual([], fixture_safety_errors(explicitly_fictional_values))
+
+        contributing = self.read_repo_file("CONTRIBUTING.md")
+        self.assertIn("身份和业务主体字段必须使用明确的虚构标记", contributing)
+
     def test_development_dependencies_include_the_yaml_parser(self):
         requirements = self.read_repo_file("requirements-dev.txt").splitlines()
         self.assertIn("PyYAML>=6,<7", requirements)

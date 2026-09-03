@@ -33,7 +33,7 @@
     ],
     "authorization_record_id": "artifact:sample.authorization",
     "authorization_gate_record_id": "artifact:sample.authorization-gate",
-    "environment_identity": "environment:sample.lab with immutable build and configuration hashes",
+    "environment_identity": "Synthetic lab with immutable build and configuration hashes",
     "pre_state_fingerprint": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
     "fingerprints": {
       "source": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
@@ -69,7 +69,7 @@
       "blast_radius": "one isolated synthetic tenant"
     },
     "recovery": {
-      "recovery_point": "snapshot:sample.pre-order with recorded fingerprint",
+      "recovery_point": "Synthetic pre-order snapshot with recorded fingerprint",
       "owner": "Sample recovery owner",
       "max_restore_time": "PT10M"
     },
@@ -184,7 +184,7 @@
         "started_at": "2026-01-15T09:01:00Z",
         "ended_at": "2026-01-15T09:02:00Z",
         "executor": "Sample primary executor",
-        "environment_identity": "environment:sample.lab build one",
+        "environment_identity": "Synthetic lab build one",
         "random_seed": "not-applicable: deterministic input",
         "sample_selection": "The sole approved synthetic order input.",
         "result": "passed",
@@ -203,7 +203,7 @@
         "started_at": "2026-01-15T09:05:00Z",
         "ended_at": "2026-01-15T09:06:00Z",
         "executor": "Sample independent executor",
-        "environment_identity": "environment:sample.lab build one equivalent instance",
+        "environment_identity": "Equivalent synthetic lab build one instance",
         "random_seed": "not-applicable: deterministic input",
         "sample_selection": "The sole approved synthetic order input.",
         "result": "passed",

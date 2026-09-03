@@ -19,7 +19,7 @@
     "evidence_method_entries": [{"evidence_id": "evidence:sample.lab-baseline", "method_id": "method:sample.experiment-reproduction"}],
     "authorization_record_id": "artifact:sample.authorization",
     "authorization_gate_record_id": "artifact:sample.authorization-gate",
-    "environment_identity": "environment:sample.lab with immutable hashes",
+    "environment_identity": "Synthetic lab with immutable hashes",
     "pre_state_fingerprint": "sha256:1515151515151515151515151515151515151515151515151515151515151515",
     "fingerprints": {"source": "source:fingerprint", "artifact": "artifact:fingerprint", "clone": "not-applicable: no clone"},
     "sentinel": "SYNTHETIC-ORDER-BETA",
