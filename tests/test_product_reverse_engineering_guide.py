@@ -29,6 +29,13 @@ FOUNDATION_DOCUMENTS = {
     "product-and-business-modeling": GUIDE_ROOT
     / "core"
     / "product-and-business-modeling.md",
+    "runtime-experiments": GUIDE_ROOT / "core" / "runtime-experiments.md",
+    "coverage-quality-and-freeze": GUIDE_ROOT
+    / "core"
+    / "coverage-quality-and-freeze.md",
+    "human-agent-collaboration": GUIDE_ROOT
+    / "core"
+    / "human-agent-collaboration.md",
 }
 LINK_SOURCE_DOCUMENTS = (
     REPO_ROOT / "README.md",
@@ -505,6 +512,198 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         competitor_section = self.section_text(document, "## 竞品输出")
         self.assertIn("观察不会自动成为需求", rewrite_section)
         self.assertIn("观察不会自动成为战略判断", competitor_section)
+
+    def test_runtime_experiments_freeze_identity_baseline_and_probe_safety(self):
+        document = self.read_foundation_document("runtime-experiments")
+        setup = self.section_text(document, "## 环境身份、基线与探针安全")
+        for requirement in (
+            "不可变环境身份",
+            "基线",
+            "唯一哨兵",
+            "只读探针",
+            "写入实验",
+            "源码指纹",
+            "克隆指纹",
+            "专用测试账号",
+            "安全克隆",
+        ):
+            with self.subTest(requirement=requirement):
+                self.assertIn(requirement, setup)
+        self.assertIn("分开批准", setup)
+
+    def test_runtime_experiments_separate_probe_claim_boundaries(self):
+        document = self.read_foundation_document("runtime-experiments")
+        section = self.section_text(document, "## 三类探针与主张边界")
+        probe_rows = {
+            match.group(1)
+            for line in section.splitlines()
+            if (match := re.fullmatch(r"\| (基础设施可达性|聚合数据探针|观察到的产品行为) \| .+ \| .+ \|", line))
+        }
+        self.assertEqual(
+            {"基础设施可达性", "聚合数据探针", "观察到的产品行为"},
+            probe_rows,
+        )
+        self.assertIn("聚合数据探针不能升级界面或产品行为主张", section)
+        self.assertIn("基础设施可达不等于产品行为成立", section)
+
+    def test_runtime_protocol_records_observations_expectations_and_failures(self):
+        document = self.read_foundation_document("runtime-experiments")
+        protocol = self.section_text(document, "## 实验协议与观察记录")
+        for observation in ("界面", "网络", "日志", "数据库"):
+            with self.subTest(observation=observation):
+                self.assertRegex(protocol, rf"(?m)^\| {observation} \|")
+        for field in ("预期结果", "实际结果", "可重复步骤"):
+            with self.subTest(field=field):
+                self.assertIn(field, protocol)
+
+        paths = self.section_text(document, "## 路径矩阵与首错保全")
+        for path in ("负向", "边界", "并发", "重试", "故障注入"):
+            with self.subTest(path=path):
+                self.assertIn(path, paths)
+        self.assertIn("首个失败", paths)
+        self.assertIn("不得被重试覆盖", paths)
+
+    def test_runtime_cleanup_reproducibility_and_static_branch_are_governed(self):
+        document = self.read_foundation_document("runtime-experiments")
+        cleanup = self.section_text(document, "## 逆序清理、完整性与处置")
+        for control in ("逆序清理", "完整性核对", "残留检查", "处置证明"):
+            with self.subTest(control=control):
+                self.assertIn(control, cleanup)
+
+        reproducibility = self.section_text(document, "## 可复现性与结论状态")
+        self.assertIn("另一执行者", reproducibility)
+        self.assertIn("`unsupported`", reproducibility)
+
+        static_branch = self.section_text(document, "## 非运行分支")
+        for permitted_reason in (
+            "授权未覆盖运行",
+            "合法环境不可用",
+            "依赖或硬件无法安全复现",
+            "副作用无法隔离",
+        ):
+            with self.subTest(permitted_reason=permitted_reason):
+                self.assertIn(permitted_reason, static_branch)
+        for required_record in ("ART-P5-STATIC", "ART-P5-RUNTIME-GAP"):
+            self.assertIn(required_record, static_branch)
+        self.assertIn("不得标为 `runtime-confirmed`", static_branch)
+
+    def test_coverage_model_defines_denominators_dimensions_and_risk_queues(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        coverage = self.section_text(document, "## 覆盖模型：先分母后分子")
+        self.assertIn("先定义分母，再计算分子", coverage)
+        for dimension in (
+            "结构覆盖",
+            "产品覆盖",
+            "语义覆盖",
+            "运行时覆盖",
+            "数据覆盖",
+            "权限覆盖",
+            "集成覆盖",
+            "非功能覆盖",
+            "追踪覆盖",
+        ):
+            with self.subTest(dimension=dimension):
+                self.assertRegex(coverage, rf"(?m)^\| {dimension} \|")
+
+        risk = self.section_text(document, "## 风险分层与未知队列")
+        for risk_level in ("P0", "P1", "P2"):
+            with self.subTest(risk_level=risk_level):
+                self.assertRegex(risk, rf"(?m)^\| `{risk_level}` \|")
+        self.assertIn("未知队列", risk)
+        self.assertIn("P0/P1", risk)
+        self.assertIn("书面接受", risk)
+
+    def test_coverage_quality_defines_exact_g0_through_g7_gate_contract(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        gates = self.section_text(document, "## G0–G7 质量门禁")
+        gate_rows = [
+            match.group(1)
+            for line in gates.splitlines()
+            if (match := re.fullmatch(r"\| `(G[0-7])` \| \S.+ \| \S.+ \|", line))
+        ]
+        self.assertEqual([f"G{index}" for index in range(8)], gate_rows)
+        for gate in gate_rows:
+            with self.subTest(gate=gate):
+                row = next(line for line in gates.splitlines() if line.startswith(f"| `{gate}` |"))
+                self.assertGreaterEqual(len(row.split("|")), 5)
+
+    def test_coverage_summaries_and_freeze_are_deterministic_and_append_only(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        summary = self.section_text(document, "## 父子汇总与确定性生成")
+        for contract in (
+            "父项",
+            "子项",
+            "确定性生成",
+            "输出允许列表",
+            "内容哈希",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, summary)
+
+        freeze = self.section_text(document, "## 冻结输入、更正与指标防篡改")
+        for contract in ("冻结输入", "取代", "`superseded`", "replaces"):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, freeze)
+        self.assertIn("不得删除未知项来改善指标", freeze)
+
+    def test_human_agent_collaboration_assigns_decision_rights(self):
+        document = self.read_foundation_document("human-agent-collaboration")
+        rights = self.section_text(document, "## 决策权矩阵")
+        roles = (
+            "产品/领域负责人",
+            "逆向负责人",
+            "技术分析师",
+            "产品研究员",
+            "QA/实验负责人",
+            "安全/隐私负责人",
+            "AI Agent",
+        )
+        for role in roles:
+            with self.subTest(role=role):
+                self.assertRegex(rights, rf"(?m)^\| {re.escape(role)} \|")
+
+    def test_human_agent_task_packet_has_exact_required_fields(self):
+        document = self.read_foundation_document("human-agent-collaboration")
+        task_packet = self.section_text(document, "## 任务包契约")
+        fields = [
+            match.group(1)
+            for line in task_packet.splitlines()
+            if (match := re.fullmatch(r"\| `([^`]+)` \| .+ \|", line))
+        ]
+        self.assertEqual(
+            [
+                "objective",
+                "input identity",
+                "scope",
+                "denominator",
+                "allowed evidence",
+                "forbidden assumptions",
+                "output paths/types",
+                "schemas",
+                "validation command",
+                "stop conditions",
+                "review owner",
+            ],
+            fields,
+        )
+
+    def test_human_agent_boundaries_keep_high_risk_decisions_human_owned(self):
+        document = self.read_foundation_document("human-agent-collaboration")
+        limits = self.section_text(document, "## AI Agent 能力边界")
+        self.assertIn("可以报告“未找到”", limits)
+        self.assertIn("不能据此推断不存在", limits)
+        self.assertIn("不能作出业务最终决定", limits)
+
+        review = self.section_text(document, "## 人工确认与发布责任")
+        for decision in (
+            "高风险规则",
+            "证据冲突",
+            "安全边界",
+            "破坏性实验",
+            "冻结",
+        ):
+            with self.subTest(decision=decision):
+                self.assertIn(decision, review)
 
     def test_foundation_documents_use_only_relative_links_and_no_placeholders(self):
         placeholder_pattern = re.compile(r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
