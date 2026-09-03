@@ -149,9 +149,11 @@ ACCESS_TRACK_STOP_CONTRACT = (
     "`pass` 前，不得继续或恢复。"
 )
 WEB_SESSION_EVIDENCE_CONTRACT = (
-    "- **会话证据边界：** 只记录当前合法会话中由已执行用户动作实际产生、且会话"
-    "持有人获准检查的请求与响应事实；不得把偶然可见的端点扩展为枚举、重放或"
-    "修改目标，超出已批准实验的请求变更一律停止。"
+    "- **会话证据边界：** 只记录已授权会话与场景中实际发生、且会话持有人获准"
+    "检查的请求、响应、推送与外部效应；分别记录用户动作、生命周期自动化/轮询/"
+    "重连/令牌刷新/预取、服务端推送、Service Worker/后台同步、卸载遥测和第三方"
+    "效应的因果 provenance，不把同一时段流量都归因于直接用户动作；继续遵守授权、"
+    "速率和数据最小化边界，且不得把偶然可见端点扩展为枚举、重放或修改目标。"
 )
 WEB_AUTHORIZATION_CLAIM_CONTRACT = (
     "- **授权主张边界：** 前端隐藏或禁用按钮只支持该角色与状态下的界面观察，"
@@ -162,6 +164,12 @@ WEB_BUNDLE_REACHABILITY_CONTRACT = (
     "- **可达性主张边界：** bundle 中存在代码或功能开关只支持制品结构主张，"
     "不证明该能力已部署、已启用或能由当前角色到达；可见产品行为必须另有同版本"
     "运行证据。"
+)
+WEB_BACKEND_CLAIM_SEPARATION_CONTRACT = (
+    "- **后端主张边界：** 隐藏服务端实现和数据模型始终与可见 UI 行为分立；"
+    "前端证据只能支持 `inferred` 或 `unsupported`，获准后端源码/模式可支持"
+    " `statically-supported`，只有绑定已部署版本、授权场景和日志/trace/运行结果"
+    "的后端证据才能支持窄边界的 `runtime-confirmed`。"
 )
 
 
@@ -552,9 +560,21 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "statically-supported",
                 "不证明对应代码已部署、已执行或当前角色可达",
             ),
-            "隐藏服务端实现或数据模型": (
-                "inferred/unsupported",
-                "与可见行为分立；没有获准静态或运行证据时保持未知",
+            "隐藏服务端实现或数据模型（前端推断）": (
+                "inferred",
+                "与可见 UI 行为分立；记录推理、替代解释和后端证据缺口",
+            ),
+            "隐藏服务端实现或数据模型（证据不足）": (
+                "unsupported",
+                "与可见 UI 行为分立；没有适用后端证据时保持未知",
+            ),
+            "隐藏服务端实现或数据模型（授权后端静态证据）": (
+                "statically-supported",
+                "只限已哈希后端源码或模式身份，不证明部署或执行",
+            ),
+            "隐藏服务端实现或数据模型（授权部署运行证据）": (
+                "runtime-confirmed",
+                "只限已绑定部署版本、授权场景和日志/trace/运行结果",
             ),
             "前端隐藏或禁用控件": (
                 "observed",
@@ -579,6 +599,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertEqual(expected_rows, observed_rows)
         self.assertIn(WEB_AUTHORIZATION_CLAIM_CONTRACT, section)
         self.assertIn(WEB_BUNDLE_REACHABILITY_CONTRACT, section)
+        self.assertIn(WEB_BACKEND_CLAIM_SEPARATION_CONTRACT, section)
 
     def assert_web_vertical_example_contract(self, document):
         trace = self.section_text(document, "## 纵向追踪示例")
@@ -621,21 +642,46 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         links = self.section_text(trace, "### 示例类型化链接")
         link_pattern = re.compile(
             r"\| `([^`]+)` \| `([^`]+)` \| `([a-z-]+)` \| `([^`]+)` \| "
-            r"`([^`]+)` \| `(required|optional)` \|"
+            r"`([^`]+)` \| `(required|optional)` \| `([^`]+)` \| `([^`]+)` \|"
         )
+        table_rows = [
+            line for line in links.splitlines() if line.startswith("| `trace-link:")
+        ]
         link_rows = [
             match.groups()
             for line in links.splitlines()
             if (match := link_pattern.fullmatch(line))
         ]
+        self.assertEqual(len(table_rows), len(link_rows))
         self.assertGreaterEqual(len(link_rows), 8)
         self.assertIn("optional", {row[5] for row in link_rows})
-        for link_id, source_id, relation, target_id, status, _branch in link_rows:
+        for (
+            link_id,
+            source_id,
+            relation,
+            target_id,
+            status,
+            _branch,
+            evidence_references,
+            contexts,
+        ) in link_rows:
             self.assertRegex(link_id, stable_id_pattern)
             self.assertIn(source_id, node_ids)
             self.assertIn(target_id, node_ids)
             self.assertIn(relation, CORE_RELATION_KINDS)
             self.assertIn(status, CLAIM_STATUSES)
+            evidence_ids = [
+                item.strip() for item in evidence_references.split(",") if item.strip()
+            ]
+            context_ids = [item.strip() for item in contexts.split(",") if item.strip()]
+            self.assertTrue(evidence_ids, f"missing evidence reference: {link_id}")
+            self.assertTrue(context_ids, f"missing version/context: {link_id}")
+            for evidence_id in evidence_ids:
+                self.assertRegex(evidence_id, stable_id_pattern)
+                self.assertTrue(evidence_id.startswith("evidence:"))
+            for context_id in context_ids:
+                self.assertRegex(context_id, stable_id_pattern)
+                self.assertTrue(context_id.startswith("context:"))
 
         expected_links = {
             (
@@ -697,7 +743,16 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         }
         observed_links = {
             (source_id, relation, target_id, status, branch)
-            for _link_id, source_id, relation, target_id, status, branch in link_rows
+            for (
+                _link_id,
+                source_id,
+                relation,
+                target_id,
+                status,
+                branch,
+                _evidence_references,
+                _contexts,
+            ) in link_rows
         }
         self.assertTrue(expected_links.issubset(observed_links))
         self.assertIn(
@@ -1162,6 +1217,23 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         document = self.read_stack_document("web-products")
         network = self.section_text(document, "## 当前授权会话的网络证据")
         self.assertIn(WEB_SESSION_EVIDENCE_CONTRACT, network)
+        self.assertNotIn("只记录当前合法会话中由已执行用户动作实际产生", network)
+        for provenance in (
+            "用户动作",
+            "生命周期自动化",
+            "轮询",
+            "重连",
+            "令牌刷新",
+            "预取",
+            "服务端推送",
+            "Service Worker",
+            "后台同步",
+            "卸载遥测",
+            "第三方效应",
+            "因果 provenance",
+        ):
+            with self.subTest(provenance=provenance):
+                self.assertIn(provenance, network)
         for field in (
             "请求身份",
             "响应事实",
@@ -1202,6 +1274,11 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 WEB_SESSION_EVIDENCE_CONTRACT,
                 "- **会话证据边界：** 当前会话暴露的端点可以扩展为枚举清单。",
             ),
+            "collapses session traffic into direct user action": document.replace(
+                WEB_SESSION_EVIDENCE_CONTRACT,
+                "- **会话证据边界：** 只记录直接用户动作产生的请求，并把同一时段"
+                "流量都归因于该动作。",
+            ),
         }
         for name, mutation in mutations.items():
             with self.subTest(mutation=name):
@@ -1223,9 +1300,19 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 WEB_BUNDLE_REACHABILITY_CONTRACT,
                 "- **可达性主张边界：** bundle 中存在代码就证明能力已部署且可达。",
             ),
-            "hidden server model becomes runtime confirmed": document.replace(
-                "| 隐藏服务端实现或数据模型 | `inferred/unsupported` |",
-                "| 隐藏服务端实现或数据模型 | `runtime-confirmed` |",
+            "frontend inference becomes runtime confirmed": document.replace(
+                "| 隐藏服务端实现或数据模型（前端推断） | `inferred` |",
+                "| 隐藏服务端实现或数据模型（前端推断） | `runtime-confirmed` |",
+            ),
+            "backend static evidence becomes runtime confirmed": document.replace(
+                "| 隐藏服务端实现或数据模型（授权后端静态证据） | "
+                "`statically-supported` |",
+                "| 隐藏服务端实现或数据模型（授权后端静态证据） | "
+                "`runtime-confirmed` |",
+            ),
+            "removes backend and UI claim separation": document.replace(
+                WEB_BACKEND_CLAIM_SEPARATION_CONTRACT,
+                "- **后端主张边界：** 浏览器结果可以直接证明隐藏服务端实现。",
             ),
         }
         for name, mutation in mutations.items():
@@ -1293,12 +1380,60 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "drops conditional async visible edge": document.replace(
                 "| `trace-link:sample.async-to-visible` | "
                 "`integration:sample.async-outcome` | `supports` | "
-                "`claim:sample.visible-result` | `inferred` | `optional` |\n",
+                "`claim:sample.visible-result` | `inferred` | `optional` | "
+                "`evidence:sample.async-candidate` | "
+                "`context:sample.session-version` |\n",
                 "",
             ),
             "upgrades conditional async visible edge": document.replace(
                 "`claim:sample.visible-result` | `inferred` | `optional` |",
                 "`claim:sample.visible-result` | `runtime-confirmed` | `required` |",
+            ),
+            "missing evidence reference": document.replace(
+                "| `trace-link:sample.handler-to-endpoint` | "
+                "`asset:sample.client-handler` | `calls` | "
+                "`integration:sample.current-session-endpoint` | "
+                "`statically-supported` | `required` | "
+                "`evidence:sample.client-static` | "
+                "`context:sample.frontend-build` |",
+                "| `trace-link:sample.handler-to-endpoint` | "
+                "`asset:sample.client-handler` | `calls` | "
+                "`integration:sample.current-session-endpoint` | "
+                "`statically-supported` | `required` |  | "
+                "`context:sample.frontend-build` |",
+            ),
+            "invalid evidence reference": document.replace(
+                "| `trace-link:sample.route-to-capability` | "
+                "`product-surface:sample.browser-route` | `exposes` | "
+                "`capability:sample.accept-action` | `observed` | `required` | "
+                "`evidence:sample.route-observation` | "
+                "`context:sample.session-version` |",
+                "| `trace-link:sample.route-to-capability` | "
+                "`product-surface:sample.browser-route` | `exposes` | "
+                "`capability:sample.accept-action` | `observed` | `required` | "
+                "`ROUTE-EVIDENCE` | `context:sample.session-version` |",
+            ),
+            "missing version context": document.replace(
+                "| `trace-link:sample.network-evidence` | "
+                "`evidence:sample.network-contract` | `supports` | "
+                "`claim:sample.network-contract` | `runtime-confirmed` | "
+                "`required` | `evidence:sample.network-contract` | "
+                "`context:sample.session-version` |",
+                "| `trace-link:sample.network-evidence` | "
+                "`evidence:sample.network-contract` | `supports` | "
+                "`claim:sample.network-contract` | `runtime-confirmed` | "
+                "`required` | `evidence:sample.network-contract` |  |",
+            ),
+            "invalid version context": document.replace(
+                "| `trace-link:sample.route-to-capability` | "
+                "`product-surface:sample.browser-route` | `exposes` | "
+                "`capability:sample.accept-action` | `observed` | `required` | "
+                "`evidence:sample.route-observation` | "
+                "`context:sample.session-version` |",
+                "| `trace-link:sample.route-to-capability` | "
+                "`product-surface:sample.browser-route` | `exposes` | "
+                "`capability:sample.accept-action` | `observed` | `required` | "
+                "`evidence:sample.route-observation` | `VERSION-1` |",
             ),
         }
         for name, mutation in mutations.items():

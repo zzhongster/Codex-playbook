@@ -48,9 +48,19 @@ DOM 快照说明某一时点的节点、属性和关系；可访问性树说明�
 
 ## 当前授权会话的网络证据
 
-- **会话证据边界：** 只记录当前合法会话中由已执行用户动作实际产生、且会话持有人获准检查的请求与响应事实；不得把偶然可见的端点扩展为枚举、重放或修改目标，超出已批准实验的请求变更一律停止。
+- **会话证据边界：** 只记录已授权会话与场景中实际发生、且会话持有人获准检查的请求、响应、推送与外部效应；分别记录用户动作、生命周期自动化/轮询/重连/令牌刷新/预取、服务端推送、Service Worker/后台同步、卸载遥测和第三方效应的因果 provenance，不把同一时段流量都归因于直接用户动作；继续遵守授权、速率和数据最小化边界，且不得把偶然可见端点扩展为枚举、重放或修改目标。
 
-为一个获准用户动作建立“动作时间 → 请求身份 → 响应事实 → 可见结果”的关联。请求身份至少包含脱敏后的方法、端点稳定 ID、资源类型、发起时点、关联 ID 和必要的头/体 schema 摘要；不得保存 Cookie 值、Authorization 值、会话令牌、个人信息或无关业务正文。
+为一个获准会话场景建立时间线，把请求身份、响应事实、推送、外部效应和可见结果连接到最小可支持的因果来源。请求身份至少包含脱敏后的方法、端点稳定 ID、资源类型、发起时点、initiator/关联 ID 和必要的头/体 schema 摘要；来源不明时标为未知，不按时间邻近猜测归因。不得保存 Cookie 值、Authorization 值、会话令牌、个人信息或无关业务正文。
+
+| 因果来源 | provenance 最低记录 |
+| --- | --- |
+| 用户动作 | 动作稳定 ID、发生时点、前置状态、initiator 与直接请求/可见结果 |
+| 生命周期自动化 | 页面加载、定时器或框架生命周期候选、首次触发与重复条件 |
+| 轮询/重连/令牌刷新/预取 | 触发器、间隔/退避、连接或缓存状态、终止条件和是否改变可见结果 |
+| 服务端推送 | 已授权 WebSocket/SSE 等连接身份、消息方向、事件/关联 ID 与消费结果 |
+| Service Worker/后台同步 | worker/注册身份、页面控制状态、队列、同步触发与网络恢复边界 |
+| 卸载遥测 | 页面隐藏/卸载触发、发送机制、批次与获准的脱敏外发摘要 |
+| 第三方效应 | 第一方触发候选、第三方目标稳定 ID、请求/响应或回调事实与数据分类 |
 
 | 契约面 | 记录事实 |
 | --- | --- |
@@ -60,7 +70,7 @@ DOM 快照说明某一时点的节点、属性和关系；可访问性树说明�
 | 幂等 | 实际出现的幂等身份、重复动作结果和副作用；未经批准不主动重放来测试 |
 | 异步结果 | 接受、处理中、轮询/推送、完成/失败信号和最终可见状态 |
 
-保存前按字段最小化并脱敏，记录浏览器、部署、角色、租户、时间窗、采集工具版本和内容哈希。缓存命中、Service Worker 响应、浏览器扩展流量和预取应与用户动作请求分开，避免把同一页面时段内的所有流量都归因给一次操作。
+保存前按字段最小化并脱敏，记录授权记录、场景、浏览器、部署、角色、租户、时间窗、速率上限、采集工具版本和内容哈希。缓存命中、Service Worker 响应、浏览器扩展流量和预取应与用户动作请求分开；第三方外发继续服从相同的数据、地域和保留边界。
 
 ## API、流式通信与文件传输
 
@@ -134,14 +144,18 @@ WebSocket 记录已获准连接的握手身份、消息方向、消息类型、�
 | --- | --- | --- | --- |
 | 可重复可见 Web 行为 | `runtime-confirmed` | 已授权、可重复的动作、环境、当前会话、实际结果和副作用 | 只限已测版本、当前合法会话、角色、套餐、租户、配置与状态 |
 | 前端静态实现 | `statically-supported` | 获准源码或制品身份、位置、内容哈希和解析方法 | 不证明对应代码已部署、已执行或当前角色可达 |
-| 隐藏服务端实现或数据模型 | `inferred/unsupported` | 独立的获准后端源码、部署、日志、模式或运行证据 | 与可见行为分立；没有获准静态或运行证据时保持未知 |
+| 隐藏服务端实现或数据模型（前端推断） | `inferred` | 前端观察/制品、显式推理步骤、替代解释和验证缺口 | 与可见 UI 行为分立；记录推理、替代解释和后端证据缺口 |
+| 隐藏服务端实现或数据模型（证据不足） | `unsupported` | 已搜索分母、版本、权限和未找到记录 | 与可见 UI 行为分立；没有适用后端证据时保持未知 |
+| 隐藏服务端实现或数据模型（授权后端静态证据） | `statically-supported` | 获准后端源码/模式的稳定 ID、版本、位置和内容哈希 | 只限已哈希后端源码或模式身份，不证明部署或执行 |
+| 隐藏服务端实现或数据模型（授权部署运行证据） | `runtime-confirmed` | 已绑定部署版本、授权场景、日志/trace/运行结果及可重复方法 | 只限已绑定部署版本、授权场景和日志/trace/运行结果 |
 | 前端隐藏或禁用控件 | `observed` | 当前角色、页面状态、DOM/可访问性与可见结果 | 不是服务端授权证明 |
 | bundle 代码或功能开关存在 | `observed` | 制品 ID、内容哈希、提取方法和部署绑定缺口 | 不证明能力已部署、已启用或当前角色可达 |
 
 - **授权主张边界：** 前端隐藏或禁用按钮只支持该角色与状态下的界面观察，不是服务端授权证明；只验证授权内角色实际得到的允许或拒绝结果，不猜测或探测未授权资源。
 - **可达性主张边界：** bundle 中存在代码或功能开关只支持制品结构主张，不证明该能力已部署、已启用或能由当前角色到达；可见产品行为必须另有同版本运行证据。
+- **后端主张边界：** 隐藏服务端实现和数据模型始终与可见 UI 行为分立；前端证据只能支持 `inferred` 或 `unsupported`，获准后端源码/模式可支持 `statically-supported`，只有绑定已部署版本、授权场景和日志/trace/运行结果的后端证据才能支持窄边界的 `runtime-confirmed`。
 
-可重复的可见 Web 行为可在批准实验与实际覆盖边界内标为 `runtime-confirmed`，不要求伪造隐藏内部链。内部实现、服务端数据模型、事务、权限策略与异步消费者使用独立主张；只有浏览器证据时保留 `inferred` 或 `unsupported`，获准静态证据只支持其静态上限。
+可重复的可见 Web 行为可在批准实验与实际覆盖边界内标为 `runtime-confirmed`，不要求伪造隐藏内部链。内部实现、服务端数据模型、事务、权限策略与异步消费者使用独立主张；只有前端证据时保留 `inferred` 或 `unsupported`，获准后端源码/模式可支持 `statically-supported`，已绑定部署的授权日志、trace 或运行结果只确认实际覆盖的内部路径和数据边界。任何一种后端状态都不能静默复制给可见 UI 主张，反之亦然。
 
 ## 常见盲区
 
@@ -171,32 +185,44 @@ WebSocket 记录已获准连接的握手身份、消息方向、消息类型、�
 | `interaction:sample.user-action` | `user-action` | `runtime-confirmed` | 已批准且可重复的单一用户动作 |
 | `asset:sample.client-handler` | `client-asset` | `statically-supported` | 仅限获准前端源码或制品中的处理候选 |
 | `data:sample.client-form-state` | `client-state` | `observed` | 当前表单的最小脱敏状态 |
+| `evidence:sample.route-observation` | `interface-evidence` | `observed` | 浏览器路由、入口和可见条件的脱敏记录 |
+| `evidence:sample.client-static` | `static-evidence` | `observed` | 已哈希前端源码/制品及解析位置 |
 | `evidence:sample.client-validation` | `runtime-evidence` | `observed` | 客户端错误与是否发起请求的运行记录 |
 | `claim:sample.client-validation` | `claim` | `runtime-confirmed` | 只确认已测字段、输入和页面状态 |
 | `integration:sample.current-session-endpoint` | `backend-endpoint` | `observed` | 当前合法会话动作实际产生的网络契约 |
 | `evidence:sample.network-contract` | `runtime-evidence` | `observed` | 脱敏请求/响应和时序记录 |
 | `claim:sample.network-contract` | `claim` | `runtime-confirmed` | 只确认实际 schema、错误与异步响应形状 |
+| `evidence:sample.backend-static` | `static-evidence` | `observed` | 可选的获准后端源码/模式身份与哈希 |
 | `asset:sample.backend-candidate` | `backend-asset` | `statically-supported` | 可选；只有获准且绑定部署的后端静态证据 |
+| `evidence:sample.async-candidate` | `derived-evidence` | `observed` | 可选异步迹象、推理步骤和替代解释 |
 | `integration:sample.async-outcome` | `async-boundary` | `inferred` | 可选；没有日志/消息/推送证据时保持候选 |
 | `evidence:sample.visible-result` | `runtime-evidence` | `observed` | 当前会话最终可见结果的脱敏记录 |
 | `claim:sample.visible-result` | `claim` | `runtime-confirmed` | 只限已测角色、状态、输入与等待边界 |
 
+### 示例版本/上下文
+
+| 上下文 ID | 限定内容 |
+| --- | --- |
+| `context:sample.session-version` | 已哈希产品版本、已授权会话/场景、角色、配置和时间窗 |
+| `context:sample.frontend-build` | 已哈希前端源码或制品版本及解析工具身份 |
+| `context:sample.backend-source` | 可选的已授权后端源码/模式版本和内容身份 |
+
 ### 示例类型化链接
 
-每条边也有独立状态和证据引用；`optional` 表示只有证据与授权允许时才纳入，不表示可以猜测节点。未执行的 client-handler 到 endpoint 关系只由获准前端源码或制品支持时，最高为 `statically-supported`；当前会话实际出现的请求仍由独立网络证据支持。
+每条边也有独立状态、证据引用 ID 和适用版本/上下文 ID；`optional` 表示只有证据与授权允许时才纳入，不表示可以猜测节点。未执行的 client-handler 到 endpoint 关系只由获准前端源码或制品支持时，最高为 `statically-supported`；当前会话实际出现的请求仍由独立网络证据支持。
 
-| 链接 ID | 来源 ID | 关系 | 目标 ID | 当前状态 | 分支 |
-| --- | --- | --- | --- | --- | --- |
-| `trace-link:sample.route-to-capability` | `product-surface:sample.browser-route` | `exposes` | `capability:sample.accept-action` | `observed` | `required` |
-| `trace-link:sample.action-to-handler` | `interaction:sample.user-action` | `calls` | `asset:sample.client-handler` | `statically-supported` | `required` |
-| `trace-link:sample.handler-to-form-state` | `asset:sample.client-handler` | `reads` | `data:sample.client-form-state` | `statically-supported` | `required` |
-| `trace-link:sample.validation-evidence` | `evidence:sample.client-validation` | `validates` | `claim:sample.client-validation` | `runtime-confirmed` | `required` |
-| `trace-link:sample.handler-to-endpoint` | `asset:sample.client-handler` | `calls` | `integration:sample.current-session-endpoint` | `statically-supported` | `required` |
-| `trace-link:sample.network-evidence` | `evidence:sample.network-contract` | `supports` | `claim:sample.network-contract` | `runtime-confirmed` | `required` |
-| `trace-link:sample.backend-to-capability` | `asset:sample.backend-candidate` | `implements` | `capability:sample.accept-action` | `statically-supported` | `optional` |
-| `trace-link:sample.endpoint-to-async` | `integration:sample.current-session-endpoint` | `emits` | `integration:sample.async-outcome` | `inferred` | `optional` |
-| `trace-link:sample.async-to-visible` | `integration:sample.async-outcome` | `supports` | `claim:sample.visible-result` | `inferred` | `optional` |
-| `trace-link:sample.visible-evidence` | `evidence:sample.visible-result` | `validates` | `claim:sample.visible-result` | `runtime-confirmed` | `required` |
+| 链接 ID | 来源 ID | 关系 | 目标 ID | 当前状态 | 分支 | 证据引用 ID | 适用版本/上下文 ID |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `trace-link:sample.route-to-capability` | `product-surface:sample.browser-route` | `exposes` | `capability:sample.accept-action` | `observed` | `required` | `evidence:sample.route-observation` | `context:sample.session-version` |
+| `trace-link:sample.action-to-handler` | `interaction:sample.user-action` | `calls` | `asset:sample.client-handler` | `statically-supported` | `required` | `evidence:sample.client-static` | `context:sample.frontend-build` |
+| `trace-link:sample.handler-to-form-state` | `asset:sample.client-handler` | `reads` | `data:sample.client-form-state` | `statically-supported` | `required` | `evidence:sample.client-static` | `context:sample.frontend-build` |
+| `trace-link:sample.validation-evidence` | `evidence:sample.client-validation` | `validates` | `claim:sample.client-validation` | `runtime-confirmed` | `required` | `evidence:sample.client-validation` | `context:sample.session-version` |
+| `trace-link:sample.handler-to-endpoint` | `asset:sample.client-handler` | `calls` | `integration:sample.current-session-endpoint` | `statically-supported` | `required` | `evidence:sample.client-static` | `context:sample.frontend-build` |
+| `trace-link:sample.network-evidence` | `evidence:sample.network-contract` | `supports` | `claim:sample.network-contract` | `runtime-confirmed` | `required` | `evidence:sample.network-contract` | `context:sample.session-version` |
+| `trace-link:sample.backend-to-capability` | `asset:sample.backend-candidate` | `implements` | `capability:sample.accept-action` | `statically-supported` | `optional` | `evidence:sample.backend-static` | `context:sample.backend-source` |
+| `trace-link:sample.endpoint-to-async` | `integration:sample.current-session-endpoint` | `emits` | `integration:sample.async-outcome` | `inferred` | `optional` | `evidence:sample.async-candidate` | `context:sample.session-version` |
+| `trace-link:sample.async-to-visible` | `integration:sample.async-outcome` | `supports` | `claim:sample.visible-result` | `inferred` | `optional` | `evidence:sample.async-candidate` | `context:sample.session-version` |
+| `trace-link:sample.visible-evidence` | `evidence:sample.visible-result` | `validates` | `claim:sample.visible-result` | `runtime-confirmed` | `required` | `evidence:sample.visible-result` | `context:sample.session-version` |
 
 异步结果到可见结果的候选边只有在当前场景确有异步迹象时保留，并始终是 `inferred`、`optional`；它不能取代可见结果自己的独立观察与运行证据。没有异步证据时删除候选关系会创建新版本，但不得删除已经登记的历史记录。
 
@@ -208,7 +234,7 @@ WebSocket 记录已获准连接的握手身份、消息方向、消息类型、�
 2. 冻结“角色 × 套餐 × 语言/地区 × 设备/视口 × 数据状态”分母，盘点公开或正常可见入口、浏览器路由、空/有数据/加载中/错误/权限拒绝状态及后台结果；未授权格子保持缺口。
 3. 为浏览器路由和后端端点分配不同稳定 ID，把用户目标、导航、重定向、DOM/可访问性与可见结果建成产品地图，不从路由名推断 API 或业务能力全集。
 4. 仅在观察面可用且获准时检查 SSR/CSR/静态生成、hydration、组件、客户端状态、表单与构建制品；分别记录客户端校验和服务端校验，不由前端阻断推断服务端授权或验证。
-5. 仅记录当前会话已执行动作实际产生且获准检查的网络证据，保存脱敏 schema、分页、错误、幂等和异步结果；REST、GraphQL、下载、上传、WebSocket 与 SSE 按各自契约建模，不扩展端点清单。
+5. 仅记录已授权会话与场景中实际发生且获准检查的网络证据，为用户动作、生命周期自动化、轮询/重连/令牌刷新/预取、服务端推送、Service Worker/后台同步、卸载遥测和第三方效应分别保存因果 provenance，以及脱敏 schema、分页、错误、幂等和异步结果；REST、GraphQL、下载、上传、WebSocket 与 SSE 按各自契约建模，不扩展端点清单。
 6. 跟踪流式与后台处理到终态或明确超时，核对 Cookie/Web Storage/IndexedDB、Service Worker/离线、功能开关/实验、遥测和响应式/locale/时区状态；改变状态前确认独立实验授权与恢复方案。
 7. 仅在现有、可绑定且获准的范围内检查源码、构建配置、chunk、source map、后端或日志，将静态结构、部署事实、当前会话运行和隐藏实现分别建主张，不补齐缺失内部链。
 8. 用正常可见路径和授权内角色的可观察允许/拒绝结果验证权限，不猜测或探测未授权资源；最后审查盲区、反证、停止记录、主张状态和类型化链接，并按[覆盖、质量与冻结](../core/coverage-quality-and-freeze.md)冻结。
