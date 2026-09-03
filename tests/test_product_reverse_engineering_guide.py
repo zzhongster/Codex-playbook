@@ -94,6 +94,60 @@ TEMPLATE_DOCUMENTS = {
         "competitor-insight",
     )
 }
+TOOLKIT_ROOT = GUIDE_ROOT / "toolkit"
+OPERATOR_TOOLKIT_DOCUMENTS = {
+    name: TOOLKIT_ROOT / f"{name}.md"
+    for name in (
+        "project-layout",
+        "checklists",
+        "prompts",
+    )
+}
+LAYOUT_PARTITION_CONTRACT = {
+    "human-docs": ("knowledge/human/", "authored", "writable-canonical"),
+    "machine-records": ("knowledge/records/", "authored", "writable-canonical"),
+    "evidence-indexes": (
+        "knowledge/evidence/indexes/",
+        "authored",
+        "writable-canonical",
+    ),
+    "runtime-protocols": (
+        "knowledge/runtime/protocols/",
+        "authored",
+        "writable-canonical",
+    ),
+    "runtime-results": (
+        "knowledge/runtime/results/",
+        "authored",
+        "writable-canonical",
+    ),
+    "runtime-effects": (
+        "knowledge/runtime/effects/",
+        "authored",
+        "writable-canonical",
+    ),
+    "decisions": ("knowledge/decisions/", "authored", "writable-canonical"),
+    "coverage": ("knowledge/coverage/", "authored", "writable-canonical"),
+    "generated-outputs": (
+        "knowledge/generated/",
+        "generated",
+        "read-only-projection",
+    ),
+}
+CHECKLIST_SECTION_IDS = (
+    *(f"Phase {index}" for index in range(10)),
+    "Delphi",
+    "Web",
+    "Java",
+    ".NET",
+)
+PROMPT_PACKET_TYPES = (
+    "inventory",
+    "vertical-trace",
+    "runtime-experiment-review",
+    "conflict-audit",
+    "freeze-audit",
+)
 SCHEMA_ROOT = GUIDE_ROOT / "toolkit" / "schemas"
 SCHEMA_NAMES = (
     "definitions",
@@ -349,6 +403,287 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         path = TEMPLATE_DOCUMENTS[name]
         self.assertTrue(path.is_file(), f"missing record template: {path}")
         return path.read_text(encoding="utf-8")
+
+    def read_operator_toolkit_document(self, name):
+        path = OPERATOR_TOOLKIT_DOCUMENTS[name]
+        self.assertTrue(path.is_file(), f"missing operator toolkit: {path}")
+        return path.read_text(encoding="utf-8")
+
+    def markdown_table(self, document, heading):
+        section = self.section_text(document, heading)
+        table_lines = [line for line in section.splitlines() if line.startswith("|")]
+        self.assertGreaterEqual(len(table_lines), 3, f"missing table under {heading}")
+
+        def cells(line):
+            return [cell.strip().strip("`") for cell in line.strip("|").split("|")]
+
+        headers = cells(table_lines[0])
+        separator = cells(table_lines[1])
+        self.assertEqual(len(headers), len(separator))
+        self.assertTrue(all(re.fullmatch(r":?-{3,}:?", cell) for cell in separator))
+        rows = []
+        for line in table_lines[2:]:
+            values = cells(line)
+            self.assertEqual(len(headers), len(values), f"malformed table row: {line}")
+            rows.append(dict(zip(headers, values)))
+        return rows
+
+    def assert_local_markdown_links_resolve(self, source_path, document):
+        links = re.findall(r"(?<!!)\[[^\]]+\]\(([^)]+)\)", document)
+        for link in links:
+            target = link.strip().removeprefix("<").removesuffix(">")
+            if re.match(r"^[a-z][a-z0-9+.-]*:", target, re.IGNORECASE):
+                continue
+            local_target = target.split("#", 1)[0]
+            resolved_target = (
+                source_path if not local_target else source_path.parent / local_target
+            ).resolve()
+            self.assertTrue(
+                resolved_target.is_file(),
+                f"broken local link in {source_path}: {target}",
+            )
+
+    def assert_project_layout_contract(self, document):
+        rows = self.markdown_table(document, "## 权威分区注册表")
+        expected_columns = {
+            "partition_id",
+            "relative_path",
+            "content_class",
+            "provenance",
+            "authority",
+            "git_policy",
+        }
+        self.assertTrue(rows)
+        self.assertEqual(expected_columns, set(rows[0]))
+        by_partition = {row["partition_id"]: row for row in rows}
+        self.assertEqual(set(LAYOUT_PARTITION_CONTRACT), set(by_partition))
+        self.assertEqual(len(rows), len(by_partition))
+
+        paths = []
+        for partition_id, (path, provenance, authority) in (
+            LAYOUT_PARTITION_CONTRACT.items()
+        ):
+            row = by_partition[partition_id]
+            self.assertEqual(path, row["relative_path"])
+            self.assertEqual(provenance, row["provenance"])
+            self.assertEqual(authority, row["authority"])
+            self.assertTrue(row["content_class"].strip())
+            self.assertTrue(row["git_policy"].strip())
+            self.assertFalse(path.startswith(("/", "../", "~")))
+            self.assertNotRegex(path, r"^[A-Za-z]:[\\/]")
+            self.assertNotIn("\\", path)
+            paths.append(path)
+        self.assertEqual(len(paths), len(set(paths)))
+        self.assertEqual("tracked-redacted-index-only", by_partition["evidence-indexes"]["git_policy"])
+        self.assertEqual("tracked-rebuildable", by_partition["generated-outputs"]["git_policy"])
+
+        authority = self.section_text(document, "## 单一可写权威与投影")
+        self.assertIn("同一事实只能有一个 `writable-canonical` 分区", authority)
+        self.assertIn("`read-only-projection` 必须可从已提交权威记录确定性重建", authority)
+        self.assertIn("禁止手工修补生成投影", authority)
+        for unsafe_claim in (
+            "同一事实可以有两个",
+            "生成投影可以手工修改",
+            "generated-outputs` 是可写权威",
+        ):
+            self.assertNotIn(unsafe_claim, authority)
+
+        raw_boundary = self.section_text(document, "## 原始与敏感证据边界")
+        self.assertIn("默认保存在普通 Git 工作树之外", raw_boundary)
+        self.assertIn("SHA-256", raw_boundary)
+        self.assertIn("脱敏索引", raw_boundary)
+        self.assertIn("不提交原始载荷", raw_boundary)
+
+    def assert_checklist_contract(self, document):
+        section_ids = [
+            match.group(1)
+            for line in document.splitlines()
+            if (match := re.fullmatch(r"## (Phase [0-9]|Delphi|Web|Java|\.NET)", line))
+        ]
+        self.assertEqual(list(CHECKLIST_SECTION_IDS), section_ids)
+        for section_id in CHECKLIST_SECTION_IDS:
+            section = self.section_text(document, f"## {section_id}")
+            items = [line for line in section.splitlines() if line.startswith("- [ ]")]
+            self.assertGreaterEqual(len(items), 2, f"thin checklist: {section_id}")
+            for item in items:
+                self.assertRegex(
+                    item,
+                    r"^- \[ \] PASS — \S.+；证据：\S.+；产物：\S.+；门禁：\S.+$",
+                )
+                self.assertNotIn("已查看", item)
+                evidence = item.split("；证据：", 1)[1].split("；产物：", 1)[0]
+                artifact = item.split("；产物：", 1)[1].split("；门禁：", 1)[0]
+                gate = item.rsplit("；门禁：", 1)[1]
+                self.assertRegex(evidence, r"`evidence:[^`]+`|证据项")
+                self.assertRegex(artifact, r"`ART-[^`]+`|`knowledge/[^`]+`")
+                self.assertRegex(gate, r"G[0-7]")
+
+        stop_rows = self.markdown_table(document, "## 跨阶段停止与范围变更")
+        self.assertEqual(
+            {"trigger_id", "required_action", "required_artifact", "resume_gate"},
+            set(stop_rows[0]),
+        )
+        by_trigger = {row["trigger_id"]: row for row in stop_rows}
+        self.assertEqual(
+            {
+                "authorization-drift",
+                "version-mismatch",
+                "unsafe-write",
+                "p0-conflict",
+            },
+            set(by_trigger),
+        )
+        for trigger_id, row in by_trigger.items():
+            self.assertIn("立即停止", row["required_action"], trigger_id)
+            self.assertRegex(row["required_artifact"], r"ART-[A-Z0-9-]+")
+            self.assertIn("G0", row["resume_gate"])
+        self.assertIn("范围变更", by_trigger["version-mismatch"]["required_action"])
+        self.assertIn("禁止覆盖", by_trigger["p0-conflict"]["required_action"])
+
+    def assert_prompt_packet_contract(self, packet, expected_type):
+        self.assertEqual(
+            {
+                "packet_type",
+                "objective",
+                "authorization_identity",
+                "workspace_identity",
+                "exact_inputs",
+                "scope_denominator",
+                "allowed_evidence",
+                "forbidden_inference",
+                "output_records",
+                "validation_command",
+                "stop_conditions",
+                "human_review_owner",
+                "agent_rules",
+            },
+            set(packet),
+        )
+        self.assertEqual(expected_type, packet["packet_type"])
+        self.assertIsInstance(packet["objective"], str)
+        self.assertTrue(packet["objective"].strip())
+        self.assertEqual(
+            {
+                "record_id",
+                "record_hash",
+                "gate_record_id",
+                "gate_record_hash",
+            },
+            set(packet["authorization_identity"]),
+        )
+        self.assertEqual(
+            {
+                "workspace_root_id",
+                "repository_commit",
+                "product_version",
+                "source_fingerprint",
+                "artifact_fingerprint",
+                "environment_identity",
+            },
+            set(packet["workspace_identity"]),
+        )
+        for identity in (
+            *packet["authorization_identity"].values(),
+            *packet["workspace_identity"].values(),
+        ):
+            self.assertIsInstance(identity, str)
+            self.assertTrue(identity.strip())
+
+        self.assertIsInstance(packet["exact_inputs"], list)
+        self.assertTrue(packet["exact_inputs"])
+        for input_record in packet["exact_inputs"]:
+            self.assertEqual(
+                {"input_id", "relative_path", "sha256", "availability"},
+                set(input_record),
+            )
+            self.assertRegex(input_record["input_id"], STABLE_ID_PATTERN)
+            self.assertRegex(input_record["sha256"], r"^sha256:[A-Za-z0-9._<>-]+$")
+            self.assertIn(input_record["availability"], {"required", "optional"})
+            self.assertTrue(input_record["relative_path"].strip())
+            self.assertFalse(input_record["relative_path"].startswith(("/", "../", "~")))
+            self.assertNotRegex(input_record["relative_path"], r"^[A-Za-z]:[\\/]")
+
+        for list_field in (
+            "scope_denominator",
+            "allowed_evidence",
+            "forbidden_inference",
+        ):
+            self.assertIsInstance(packet[list_field], list)
+            self.assertTrue(packet[list_field])
+            self.assertTrue(all(isinstance(item, str) and item.strip() for item in packet[list_field]))
+
+        self.assertIsInstance(packet["output_records"], list)
+        self.assertTrue(packet["output_records"])
+        for output in packet["output_records"]:
+            self.assertEqual({"record_type", "schema", "relative_path"}, set(output))
+            self.assertTrue(output["record_type"].strip())
+            self.assertEqual(
+                f'{output["record_type"]}.schema.json',
+                Path(output["schema"]).name,
+            )
+            self.assertTrue(
+                (REPO_ROOT / output["schema"]).is_file(),
+                f'missing declared output schema: {output["schema"]}',
+            )
+            for path_key in ("schema", "relative_path"):
+                path = output[path_key]
+                self.assertTrue(path.strip())
+                self.assertFalse(path.startswith(("/", "../", "~")))
+                self.assertNotRegex(path, r"^[A-Za-z]:[\\/]")
+            self.assertFalse(
+                output["relative_path"].startswith("knowledge/decisions/"),
+                "Agent task packets cannot write human-owned decisions",
+            )
+        self.assertEqual(
+            "python3 tools/validate_product_reverse_engineering_guide.py",
+            packet["validation_command"],
+        )
+
+        self.assertIsInstance(packet["stop_conditions"], list)
+        stop_conditions = {
+            condition["condition"]: condition["action"]
+            for condition in packet["stop_conditions"]
+        }
+        self.assertEqual(
+            {
+                "authorization-drift",
+                "workspace-identity-mismatch",
+                "required-input-unreachable",
+                "unsafe-or-unapproved-runtime",
+            },
+            set(stop_conditions),
+        )
+        self.assertTrue(all("stop" in action for action in stop_conditions.values()))
+        self.assertIsInstance(packet["human_review_owner"], str)
+        self.assertTrue(packet["human_review_owner"].strip())
+        self.assertNotRegex(packet["human_review_owner"], r"(?i)^ai(?: agent)?$")
+
+        self.assertEqual(
+            {
+                "preserve_unknowns",
+                "cite_each_claim",
+                "report_unreachable_inputs",
+                "absence_terms",
+                "may_approve_gate",
+                "may_change_authorization",
+                "may_run_unapproved_runtime",
+            },
+            set(packet["agent_rules"]),
+        )
+        rules = packet["agent_rules"]
+        for required_true in (
+            "preserve_unknowns",
+            "cite_each_claim",
+            "report_unreachable_inputs",
+        ):
+            self.assertIs(rules[required_true], True)
+        self.assertEqual(["not-found", "does-not-exist"], rules["absence_terms"])
+        for required_false in (
+            "may_approve_gate",
+            "may_change_authorization",
+            "may_run_unapproved_runtime",
+        ):
+            self.assertIs(rules[required_false], False)
 
     def read_json_file(self, path):
         self.assertTrue(path.is_file(), f"missing JSON file: {path}")
@@ -6532,6 +6867,82 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
     def test_readme_validation_scope_includes_core_and_access_tracks(self):
         validation = self.section_text(self.read_guide(), "## 验证")
         self.assertIn("九项核心模块和三条访问轨道", validation)
+
+    def test_operator_project_layout_has_single_authorities_and_safe_evidence_storage(self):
+        document = self.read_operator_toolkit_document("project-layout")
+        self.assert_project_layout_contract(document)
+        self.assertIn(
+            "](toolkit/project-layout.md)",
+            self.read_guide(),
+        )
+        self.assert_local_markdown_links_resolve(
+            OPERATOR_TOOLKIT_DOCUMENTS["project-layout"], document
+        )
+
+        duplicate_authority = document.replace(
+            "read-only-projection", "writable-canonical", 1
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_project_layout_contract(duplicate_authority)
+
+        unsafe_raw_policy = document.replace(
+            "默认保存在普通 Git 工作树之外",
+            "默认提交到普通 Git 工作树",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_project_layout_contract(unsafe_raw_policy)
+
+    def test_operator_checklists_make_pass_and_stop_conditions_auditable(self):
+        document = self.read_operator_toolkit_document("checklists")
+        self.assert_checklist_contract(document)
+        self.assertIn("](toolkit/checklists.md)", self.read_guide())
+        self.assert_local_markdown_links_resolve(
+            OPERATOR_TOOLKIT_DOCUMENTS["checklists"], document
+        )
+
+        missing_evidence = document.replace("；证据：", "；参考：", 1)
+        with self.assertRaises(AssertionError):
+            self.assert_checklist_contract(missing_evidence)
+
+        ignored_authorization_drift = document.replace(
+            "| authorization-drift | 立即停止",
+            "| authorization-drift | 继续执行",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_checklist_contract(ignored_authorization_drift)
+
+    def test_operator_prompts_are_bound_safe_machine_readable_task_packets(self):
+        document = self.read_operator_toolkit_document("prompts")
+        packets = self.parse_all_yaml_metadata(document)
+        self.assertEqual(len(PROMPT_PACKET_TYPES), len(packets))
+        self.assertEqual(
+            list(PROMPT_PACKET_TYPES),
+            [packet.get("packet_type") for packet in packets],
+        )
+        for packet_type, packet in zip(PROMPT_PACKET_TYPES, packets):
+            with self.subTest(packet_type=packet_type):
+                self.assert_prompt_packet_contract(packet, packet_type)
+        self.assertIn("](toolkit/prompts.md)", self.read_guide())
+        self.assert_local_markdown_links_resolve(
+            OPERATOR_TOOLKIT_DOCUMENTS["prompts"], document
+        )
+
+        self_approved = copy.deepcopy(packets[0])
+        self_approved["agent_rules"]["may_approve_gate"] = True
+        with self.assertRaises(AssertionError):
+            self.assert_prompt_packet_contract(self_approved, "inventory")
+
+        unbound_input = copy.deepcopy(packets[1])
+        del unbound_input["exact_inputs"][0]["sha256"]
+        with self.assertRaises(AssertionError):
+            self.assert_prompt_packet_contract(unbound_input, "vertical-trace")
+
+        absolute_output = copy.deepcopy(packets[4])
+        absolute_output["output_records"][0]["relative_path"] = "/tmp/freeze.json"
+        with self.assertRaises(AssertionError):
+            self.assert_prompt_packet_contract(absolute_output, "freeze-audit")
 
     def test_guide_readme_links_every_foundation_document_relatively(self):
         guide = self.read_guide()
