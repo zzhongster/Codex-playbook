@@ -312,11 +312,32 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             selection,
         )
         self.assertIn(
-            "拥有完整源码和获准读取的构建材料时，选择"
+            "拥有完整且已获授权读取的源码时，选择"
             "[白盒访问轨道](../access-tracks/white-box.md)",
             selection,
         )
-        self.assertIn("构建和运行仍须逐项授权", selection)
+        self.assertIn(
+            "不以构建材料是否存在或获准作为白盒轨道的前置条件",
+            selection,
+        )
+        self.assertIn(
+            "构建文件/材料、构建执行和运行观察是相互独立的可选证据与权限面",
+            selection,
+        )
+        self.assertIn("缺失或未获准时分别明确记录", selection)
+
+    def assert_delphi_lab_identity_is_branch_specific(self, document):
+        lab = self.section_text(document, "## 遗留运行实验室")
+        for contract in (
+            "每次实验只记录实际使用的数据或外部依赖身份",
+            "数据库分支记录数据库副本稳定 ID",
+            "文件分支记录文件/目录稳定 ID 与哈希",
+            "远程分支记录脱敏端点/服务稳定 ID",
+            "设备分支记录设备稳定 ID",
+            "无数据层分支显式记录 `no-data-layer`",
+            "不要求每次实验记录数据库身份",
+        ):
+            self.assertIn(contract, lab)
 
     def assert_delphi_report_evidence_ceilings(self, document):
         report = self.section_text(document, "## 报表、打印与导出")
@@ -453,9 +474,20 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.assertEqual(len(candidate_ids), int(candidate_match.group(2)))
             for candidate_id in candidate_ids:
                 self.assertRegex(candidate_id, stable_id_pattern)
-            relations = re.findall(r"→ `([a-z-]+)` →", links)
-            self.assertTrue(relations, f"missing typed relation in row: {stable_id}")
-            self.assertTrue(set(relations).issubset(CORE_RELATION_KINDS))
+            typed_links = re.findall(
+                r"`([^`]+)` → `([a-z-]+)` → `([^`]+)`",
+                links,
+            )
+            self.assertTrue(typed_links, f"missing typed relation in row: {stable_id}")
+            self.assertEqual(
+                links.count("→"),
+                2 * len(typed_links),
+                f"unparsed typed link in row: {stable_id}",
+            )
+            for source_id, relation, target_id in typed_links:
+                self.assertRegex(source_id, stable_id_pattern)
+                self.assertIn(relation, CORE_RELATION_KINDS)
+                self.assertRegex(target_id, stable_id_pattern)
 
         referenced_ids = re.findall(
             r"\b[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+\b",
@@ -574,14 +606,47 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         document = self.read_stack_document("delphi-desktop")
         self.assert_delphi_access_track_selection(document)
 
-        mutated = document.replace(
-            "只有编译产物、配置、数据库或部分源码时，选择"
-            "[灰盒访问轨道](../access-tracks/gray-box.md)",
-            "只有编译产物、配置、数据库或部分源码时，选择"
-            "[白盒访问轨道](../access-tracks/white-box.md)",
-        )
-        with self.assertRaises(AssertionError):
-            self.assert_delphi_access_track_selection(mutated)
+        mutations = {
+            "routes partial source to white box": document.replace(
+                "只有编译产物、配置、数据库或部分源码时，选择"
+                "[灰盒访问轨道](../access-tracks/gray-box.md)",
+                "只有编译产物、配置、数据库或部分源码时，选择"
+                "[白盒访问轨道](../access-tracks/white-box.md)",
+            ),
+            "requires build materials for white box": document.replace(
+                "拥有完整且已获授权读取的源码时，选择"
+                "[白盒访问轨道](../access-tracks/white-box.md)",
+                "拥有完整源码和获准读取的构建材料时，选择"
+                "[白盒访问轨道](../access-tracks/white-box.md)",
+            ),
+            "makes build execution implicit": document.replace(
+                "构建文件/材料、构建执行和运行观察是相互独立的可选证据与权限面",
+                "源码获准后构建执行和运行观察自动获准",
+            ),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                with self.assertRaises(AssertionError):
+                    self.assert_delphi_access_track_selection(mutation)
+
+    def test_delphi_runtime_lab_records_only_the_identity_used_by_each_branch(self):
+        document = self.read_stack_document("delphi-desktop")
+        self.assert_delphi_lab_identity_is_branch_specific(document)
+
+        mutations = {
+            "requires database identity universally": document.replace(
+                "不要求每次实验记录数据库身份",
+                "每次实验都必须记录数据库身份",
+            ),
+            "omits explicit no-data identity": document.replace(
+                "无数据层分支显式记录 `no-data-layer`",
+                "无数据层分支不记录数据身份",
+            ),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                with self.assertRaises(AssertionError):
+                    self.assert_delphi_lab_identity_is_branch_specific(mutation)
 
     def test_delphi_workflow_is_ordered_and_preserves_original_resources(self):
         document = self.read_stack_document("delphi-desktop")
@@ -753,7 +818,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             with self.subTest(blind_spot=blind_spot):
                 self.assertRegex(blind_spots, rf"(?m)^\| {re.escape(blind_spot)} \|")
         for stop_rule in (
-            "授权、身份、版本、数据库目标或隔离状态漂移时立即停止",
+            "授权、身份、版本、实际分支目标或隔离状态漂移时立即停止",
             "二进制 DFM 无法无损转换时保留原件并把对应字段标为 `unsupported`",
             "动态目标不能唯一解析时停止自动连边",
             "不能启动安全的 32 位会话时转入受治理的静态分支",
@@ -776,6 +841,18 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "unqualified stable ID": document.replace(
                 "claim:sample.export-visible",
                 "SAN-MENU-01",
+                1,
+            ),
+            "unqualified typed-link source": document.replace(
+                "`evidence:sample.run-001` → `validates` → "
+                "`claim:sample.export-visible`",
+                "`SAN-SOURCE-01` → `validates` → `claim:sample.export-visible`",
+                1,
+            ),
+            "unqualified typed-link target": document.replace(
+                "`evidence:sample.run-001` → `validates` → "
+                "`claim:sample.export-visible`",
+                "`evidence:sample.run-001` → `validates` → `SAN-TARGET-01`",
                 1,
             ),
             "non-core claim status": document.replace(
