@@ -86,16 +86,20 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 self.assertIn(f"]({relative_path})", guide)
 
     def test_each_foundation_document_declares_one_maturity_and_applicability(self):
-        maturity_pattern = re.compile(
-            r"(?m)^\*\*证据成熟度：`("
-            + "|".join(ALLOWED_MATURITY_LABELS)
-            + r")`\*\*"
-        )
+        maturity_pattern = re.compile(r"^\*\*证据成熟度：`([^`]+)`\*\*$")
         for name, path in FOUNDATION_DOCUMENTS.items():
             with self.subTest(document=name):
                 self.assertTrue(path.is_file(), f"missing foundation document: {path}")
                 document = path.read_text(encoding="utf-8")
-                self.assertEqual(1, len(maturity_pattern.findall(document)))
+                maturity_declarations = [
+                    line
+                    for line in document.splitlines()
+                    if line.strip().removeprefix("**").startswith("证据成熟度：")
+                ]
+                self.assertEqual(1, len(maturity_declarations))
+                match = maturity_pattern.fullmatch(maturity_declarations[0].strip())
+                self.assertIsNotNone(match)
+                self.assertIn(match.group(1), ALLOWED_MATURITY_LABELS)
                 self.assertRegex(document, r"(?m)^\*\*适用范围：\*\*\s*\S.+$")
 
     def test_evidence_document_defines_exact_claim_status_vocabulary(self):
@@ -111,13 +115,24 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "deprecated",
             "superseded",
         )
-        status_declarations = set(
-            re.findall(r"(?m)^\| `([a-z-]+)` \|", document)
-        )
-        self.assertTrue(
-            set(expected_statuses).issubset(status_declarations),
-            f"missing claim statuses: {set(expected_statuses) - status_declarations}",
-        )
+        claim_status_section = self.section_text(document, "## 主张状态")
+        section_lines = claim_status_section.splitlines()
+        table_header = "| 状态 | 定义 |"
+        self.assertIn(table_header, section_lines)
+        table_start = section_lines.index(table_header)
+        self.assertEqual("| --- | --- |", section_lines[table_start + 1])
+        status_rows = []
+        for line in section_lines[table_start + 2 :]:
+            if not line.startswith("|"):
+                break
+            status_rows.append(line)
+        status_declarations = {
+            match.group(1)
+            for row in status_rows
+            if (match := re.fullmatch(r"\| `([a-z-]+)` \| .+ \|", row))
+        }
+        self.assertEqual(len(status_rows), len(status_declarations))
+        self.assertEqual(set(expected_statuses), status_declarations)
 
     def test_goals_document_defines_purposes_scope_dimensions_and_completion(self):
         document = self.read_foundation_document("goals-scope-and-completion")
