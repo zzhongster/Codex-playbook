@@ -75,13 +75,16 @@ _STABLE_ID = re.compile(
 _NETWORK_LABEL = re.compile(
     r"(?i)(?<![a-z0-9_-])"
     r"(?:address|domain|host|hostname|ip|ip-address|node|peer|server)"
-    r"\s*[:=]\s*(?P<target>\[[0-9a-f:]+\](?::[0-9]{1,5})?|"
-    r"(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}|"
-    r"[a-z0-9.-]+(?::[0-9]{1,5})?)"
+    r"\s*[:=]\s*(?P<target>[^\s,;\"'<>]+)"
 )
 _NETWORK_FIELD = re.compile(
     r"(?i)(?:^|[_-])(?:host|hostname|node|peer|server)"
     r"(?:[_-](?:address|id|name))?$"
+)
+_NETWORK_AUTHORITY = re.compile(
+    r"(?:\[[0-9A-Fa-f:.]+\]|"
+    r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?)"
+    r"(?::[0-9]+)?"
 )
 _AUTHORIZATION_FIELD = re.compile(r"(?i)^(?:authorization|proxy_authorization)$")
 _AUTHORIZATION_PARAMETER_FIELD = re.compile(
@@ -219,25 +222,41 @@ def _network_identifier_errors(identifier, path, reject_single_label=False):
     return []
 
 
-def _authority_host(value):
+def _parse_network_authority(value):
     normalized = value.strip()
     if not normalized or any(character.isspace() for character in normalized):
-        return None
+        return None, "malformed authority"
     try:
         authority = urlsplit(f"//{normalized}")
-        authority.port
     except ValueError:
-        return None
+        return None, "malformed authority"
+    if authority.username is not None or authority.password is not None:
+        return None, "credential/userinfo in network authority"
     if (
         authority.hostname is None
-        or authority.username is not None
-        or authority.password is not None
         or authority.path
         or authority.query
         or authority.fragment
+        or not _NETWORK_AUTHORITY.fullmatch(normalized)
     ):
-        return None
-    return authority.hostname
+        return None, "malformed authority"
+    try:
+        port = authority.port
+    except ValueError:
+        return None, "malformed authority"
+    if port is not None and not 1 <= port <= 65535:
+        return None, "malformed authority"
+
+    normalized_host = authority.hostname.rstrip(".")
+    try:
+        ipaddress.ip_address(normalized_host)
+    except ValueError:
+        if not (
+            _DOMAIN.fullmatch(normalized_host)
+            or _DNS_SINGLE_LABEL.fullmatch(normalized_host)
+        ):
+            return None, "malformed authority"
+    return authority.hostname, None
 
 
 def _valid_base64_token(token, require_colon=False):
@@ -352,23 +371,29 @@ def _string_safety_errors(value, path, path_keys):
             errors.extend(_network_identifier_errors(match.group(0), path))
 
     if path_keys and _NETWORK_FIELD.search(path_keys[-1]):
-        authority_host = _authority_host(normalized_non_url_text)
-        errors.extend(
-            _network_identifier_errors(
-                authority_host or normalized_non_url_text,
-                path,
-                reject_single_label=True,
-            )
+        authority_host, authority_error = _parse_network_authority(
+            non_url_text.strip()
         )
+        if authority_error:
+            errors.append(f"{path}: {authority_error}")
+        else:
+            errors.extend(
+                _network_identifier_errors(
+                    authority_host, path, reject_single_label=True
+                )
+            )
 
     for match in _NETWORK_LABEL.finditer(non_url_text):
         target = match.group("target")
-        authority_host = _authority_host(target)
-        errors.extend(
-            _network_identifier_errors(
-                authority_host or target, path, reject_single_label=True
+        authority_host, authority_error = _parse_network_authority(target)
+        if authority_error:
+            errors.append(f"{path}: {authority_error}")
+        else:
+            errors.extend(
+                _network_identifier_errors(
+                    authority_host, path, reject_single_label=True
+                )
             )
-        )
     return errors
 
 

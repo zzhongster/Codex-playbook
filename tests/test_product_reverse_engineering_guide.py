@@ -4367,6 +4367,73 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIn("host:port", contributing)
         self.assertIn("方括号 IPv6", contributing)
 
+    def test_fixture_safety_rejects_malformed_or_credentialed_network_authorities(self):
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+        review_mutations = {
+            "userinfo": {
+                "host": "synthetic-user:synthetic-pass@synthetic-host:5432"
+            },
+            "path": {"hostname": "synthetic-host/private"},
+            "query": {"server": "synthetic-host?mode=sample"},
+            "fragment": {"node": "synthetic-host#details"},
+            "non-numeric port": {"peer": "synthetic-host:not-a-port"},
+            "out-of-range port": {"host": "synthetic-host:65536"},
+        }
+        for label, mutation in review_mutations.items():
+            with self.subTest(label=label):
+                errors = fixture_safety_errors(mutation)
+                self.assertTrue(errors)
+                expected = (
+                    "credential/userinfo"
+                    if label == "userinfo"
+                    else "malformed authority"
+                )
+                self.assertTrue(any(expected in error for error in errors), errors)
+
+        for label, mutation in {
+            "zero port": {"host": "synthetic-host:0"},
+            "unclosed IPv6 bracket": {"host": "[2001:db8::25:443"},
+            "unexpected IPv6 bracket": {"server": "2001:db8::25]:443"},
+            "double port separator": {"node": "synthetic-host::5432"},
+            "empty authority": {"peer": ""},
+        }.items():
+            with self.subTest(label=label):
+                errors = fixture_safety_errors(mutation)
+                self.assertTrue(errors)
+                self.assertTrue(
+                    any("malformed authority" in error for error in errors), errors
+                )
+
+        safe_authorities = {
+            "host": "synthetic-host:5432",
+            "hostname": "example.invalid:443",
+            "server": "192.0.2.25",
+            "node": "[2001:db8::25]:443",
+        }
+        self.assertEqual([], fixture_safety_errors(safe_authorities))
+
+        self.assertTrue(
+            fixture_safety_errors(
+                {
+                    "url": (
+                        "https://synthetic-user:synthetic-pass@"
+                        "example.invalid/private"
+                    )
+                }
+            )
+        )
+        self.assertTrue(
+            fixture_safety_errors({"url": "https://api.customer.com/private"})
+        )
+        self.assertEqual(
+            [],
+            fixture_safety_errors(
+                {"url": "https://api.example.invalid/sample?mode=test#result"}
+            ),
+        )
+
     def test_fixture_safety_limits_business_checks_to_identity_fields(self):
         fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
             "fixture_safety_errors"
