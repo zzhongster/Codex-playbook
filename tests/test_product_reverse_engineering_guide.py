@@ -37,11 +37,17 @@ FOUNDATION_DOCUMENTS = {
     / "core"
     / "human-agent-collaboration.md",
 }
+ACCESS_TRACK_DOCUMENTS = {
+    "black-box": GUIDE_ROOT / "access-tracks" / "black-box.md",
+    "gray-box": GUIDE_ROOT / "access-tracks" / "gray-box.md",
+    "white-box": GUIDE_ROOT / "access-tracks" / "white-box.md",
+}
 LINK_SOURCE_DOCUMENTS = (
     REPO_ROOT / "README.md",
     REPO_ROOT / "CONTRIBUTING.md",
     GUIDE_ROOT / "README.md",
     *FOUNDATION_DOCUMENTS.values(),
+    *ACCESS_TRACK_DOCUMENTS.values(),
 )
 ALLOWED_MATURITY_LABELS = (
     "cross-project-validated",
@@ -53,6 +59,15 @@ TASK_4_DOCUMENT_NAMES = (
     "runtime-experiments",
     "coverage-quality-and-freeze",
     "human-agent-collaboration",
+)
+REQUIRED_ACCESS_TRACK_SECTIONS = (
+    "适用条件",
+    "可用证据",
+    "逐步流程",
+    "能够证明",
+    "不能证明",
+    "升级路径",
+    "停止条件",
 )
 
 
@@ -68,6 +83,11 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
     def read_foundation_document(self, name):
         path = FOUNDATION_DOCUMENTS[name]
         self.assertTrue(path.is_file(), f"missing foundation document: {path}")
+        return path.read_text(encoding="utf-8")
+
+    def read_access_track(self, name):
+        path = ACCESS_TRACK_DOCUMENTS[name]
+        self.assertTrue(path.is_file(), f"missing access track: {path}")
         return path.read_text(encoding="utf-8")
 
     def section_text(self, document, heading):
@@ -174,6 +194,174 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         for name, path in FOUNDATION_DOCUMENTS.items():
             with self.subTest(document=name):
                 self.assertTrue(path.is_file(), f"missing foundation document: {path}")
+
+    def test_access_track_documents_exist_and_are_linked_from_the_guide(self):
+        guide = self.read_guide()
+        for name, path in ACCESS_TRACK_DOCUMENTS.items():
+            with self.subTest(track=name):
+                self.assertTrue(path.is_file(), f"missing access track: {path}")
+                relative_path = path.relative_to(GUIDE_ROOT).as_posix()
+                self.assertIn(f"]({relative_path})", guide)
+
+    def test_access_tracks_have_the_exact_substantive_section_contract(self):
+        maturity_pattern = re.compile(r"^\*\*证据成熟度：`([^`]+)`\*\*$")
+        for name in ACCESS_TRACK_DOCUMENTS:
+            with self.subTest(track=name):
+                document = self.read_access_track(name)
+                h2_headings = [
+                    line.removeprefix("## ")
+                    for line in document.splitlines()
+                    if line.startswith("## ")
+                ]
+                self.assertEqual(list(REQUIRED_ACCESS_TRACK_SECTIONS), h2_headings)
+
+                maturity_declarations = [
+                    line.strip()
+                    for line in document.splitlines()
+                    if line.strip().removeprefix("**").startswith("证据成熟度：")
+                ]
+                self.assertEqual(1, len(maturity_declarations))
+                match = maturity_pattern.fullmatch(maturity_declarations[0])
+                self.assertIsNotNone(match)
+                self.assertIn(match.group(1), ALLOWED_MATURITY_LABELS)
+                self.assert_one_nonblank_applicability_declaration(document)
+
+                for section_name in REQUIRED_ACCESS_TRACK_SECTIONS:
+                    section = self.section_text(document, f"## {section_name}")
+                    substantive_lines = [
+                        line
+                        for line in section.splitlines()[1:]
+                        if line.strip() and not line.startswith("#")
+                    ]
+                    self.assertGreaterEqual(
+                        len(substantive_lines),
+                        2,
+                        f"thin section in {name}: {section_name}",
+                    )
+
+    def test_access_tracks_share_evidence_outputs_and_append_only_upgrade_rules(self):
+        for name in ACCESS_TRACK_DOCUMENTS:
+            with self.subTest(track=name):
+                document = self.read_access_track(name)
+                upgrade = self.section_text(document, "## 升级路径")
+                for contract in (
+                    "证据项",
+                    "主张",
+                    "类型化追踪链接",
+                    "ART-P4-TRACE",
+                    "保留历史",
+                ):
+                    self.assertIn(contract, upgrade)
+                self.assertIn("新建", upgrade)
+                self.assertNotIn("覆盖旧", upgrade)
+
+    def test_access_tracks_stop_on_shared_safety_and_identity_failures(self):
+        shared_stops = (
+            "授权漂移",
+            "版本不匹配",
+            "不安全写入",
+            "敏感信息泄露",
+            "环境未绑定",
+        )
+        for name in ACCESS_TRACK_DOCUMENTS:
+            with self.subTest(track=name):
+                stop = self.section_text(
+                    self.read_access_track(name), "## 停止条件"
+                )
+                for trigger in shared_stops:
+                    self.assertIn(trigger, stop)
+
+    def test_black_box_track_limits_sources_and_binds_observation_matrix(self):
+        document = self.read_access_track("black-box")
+        applicability = self.section_text(document, "## 适用条件")
+        evidence = self.section_text(document, "## 可用证据")
+        workflow = self.section_text(document, "## 逐步流程")
+
+        for boundary in ("公开信息", "合法账号", "ART-P0-AUTH", "当前合法会话"):
+            self.assertIn(boundary, applicability + evidence)
+        for dimension in ("角色", "套餐", "地区/语言", "设备"):
+            self.assertIn(dimension, workflow)
+        for state in ("空状态", "有数据状态", "错误状态", "权限状态"):
+            self.assertIn(state, workflow)
+        for path in ("正常", "逆向", "负向", "边界", "重试"):
+            self.assertIn(path, workflow)
+        for surface in ("系统化导航", "成对动作", "导入", "导出", "通知"):
+            self.assertIn(surface, workflow)
+        for control in ("速率限制", "数据最小化", "浏览器", "网络"):
+            self.assertIn(control, evidence + workflow)
+
+    def test_black_box_track_guards_prohibited_actions_and_claim_ceiling(self):
+        document = self.read_access_track("black-box")
+        cannot_prove = self.section_text(document, "## 不能证明")
+        stop = self.section_text(document, "## 停止条件")
+        for prohibited in (
+            "隐藏租户",
+            "隐藏账号",
+            "凭据提取",
+            "绕过访问控制",
+            "规避付费功能",
+            "破坏性端点探测",
+            "未授权端点探测",
+        ):
+            self.assertIn(prohibited, stop)
+        for limit in ("内部算法", "内部数据模型", "产品事实", "战略推断"):
+            self.assertIn(limit, cannot_prove)
+
+    def test_gray_box_track_catalogs_partial_assets_and_static_limits(self):
+        document = self.read_access_track("gray-box")
+        evidence = self.section_text(document, "## 可用证据")
+        workflow = self.section_text(document, "## 逐步流程")
+        cannot_prove = self.section_text(document, "## 不能证明")
+        upgrade = self.section_text(document, "## 升级路径")
+
+        for source in (
+            "软件包",
+            "清单",
+            "配置",
+            "日志",
+            "API 文档",
+            "只读数据库",
+            "部署元数据",
+            "二进制",
+            "符号元数据",
+            "部分源码",
+        ):
+            self.assertIn(source, evidence)
+        for identity in ("内容哈希", "反编译工具版本"):
+            self.assertIn(identity, workflow)
+        for limit in ("名称", "类型", "生成代码", "控制流", "意图"):
+            self.assertIn(limit, cannot_prove)
+        self.assertIn("配置存在", cannot_prove)
+        self.assertIn("部署行为", cannot_prove)
+        self.assertIn("黑盒事实", upgrade)
+
+    def test_white_box_track_traces_runtime_architecture_without_overclaiming(self):
+        document = self.read_access_track("white-box")
+        workflow = self.section_text(document, "## 逐步流程")
+        can_prove = self.section_text(document, "## 能够证明")
+        cannot_prove = self.section_text(document, "## 不能证明")
+
+        for target in (
+            "构建入口",
+            "运行入口",
+            "依赖图",
+            "路由",
+            "配置优先级",
+            "事务",
+            "持久化",
+            "异步副作用",
+            "测试",
+            "死代码",
+            "生成代码",
+            "运行确认",
+        ):
+            self.assertIn(target, workflow + can_prove)
+        for identity in ("生产版本", "源码身份"):
+            self.assertIn(identity, workflow)
+        self.assertIn("代码覆盖率不等于产品覆盖率", cannot_prove)
+        self.assertIn("源码分支", cannot_prove)
+        self.assertIn("测试通过", cannot_prove)
+        self.assertIn("部署行为", cannot_prove)
 
     def test_guide_readme_links_every_foundation_document_relatively(self):
         guide = self.read_guide()
