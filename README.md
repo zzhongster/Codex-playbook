@@ -8,11 +8,18 @@
 
 ~~~text
 Codex-playbook/
+├── guides/            # 跨阶段、跨角色的端到端工程指南
 ├── patterns/          # 至少在两个项目验证过的工程模式
 ├── anti-patterns/     # 有具体踩坑经历和替代方案的反模式
 ├── experiments/       # 有对照组、数据和结论的实验
 └── CONTRIBUTING.md
 ~~~
+
+## Guides
+
+| 文档 | 用途 |
+| --- | --- |
+| [跨技术栈产品逆向工程指南](guides/product-reverse-engineering/README.md) | 从需求边界、证据采集到跨栈追踪、验证和发布，组织完整的产品逆向工程工作流 |
 
 ## Anti-patterns
 
