@@ -113,6 +113,14 @@
 | [一周评估](operating-profiles/one-week-assessment.md) | 用五个工作日建立初步分母、代表角色与核心旅程、多条高风险切片、获授权实验台账、完整项目估算和未验证区时 |
 | [完整项目](operating-profiles/full-program.md) | 按依赖 waves 执行 Phase 0–9，管理哈希、父子摘要、领域/运行/冻结门禁、增量、目的专用交付和大型 cluster 拆分时 |
 
+## 案例研究导航
+
+案例研究展示通用契约如何落到真实项目，但不会把单项目经验自动提升为跨项目成熟度，也不会替代目标项目自己的授权、分母和证据。
+
+| 案例 | 使用时机 |
+| --- | --- |
+| [gjpERP Delphi ERP 逆向案例](case-studies/gjperp-delphi-erp.md) | 参考遗留 Delphi/VCL ERP 如何建立横向分母、稳定 ID、纵向链、隔离 Windows 实验、安全克隆、分层覆盖和阶段冻结时 |
+
 ## 导航与发布顺序
 
 **证据成熟度：`proposed`** — 本节的阅读与执行顺序是当前建议，后续应根据真实项目证据调整并提升成熟度。

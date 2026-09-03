@@ -241,6 +241,112 @@ OPERATING_PROFILE_OUTPUT_CONTENT = {
         "artifact:program.profile-exit-verification.phase8.v1": {"root-and-freeze-verification"},
     },
 }
+CASE_STUDY_DOCUMENTS = {
+    "gjperp-delphi-erp": GUIDE_ROOT
+    / "case-studies"
+    / "gjperp-delphi-erp.md",
+}
+REQUIRED_GJPERP_CASE_SECTIONS = (
+    "案例背景",
+    "项目约束",
+    "横向分母",
+    "纵向证据链",
+    "稳定 ID",
+    "证据状态",
+    "Windows 实验室",
+    "安全克隆协议",
+    "覆盖与冻结",
+    "实测结果",
+    "已验证方法",
+    "失败假设",
+    "适用边界",
+    "来源链接",
+)
+GJPERP_CASE_SOURCES = {
+    "source:gjperp.reverse-design": (
+        "docs/superpowers/specs/2026-07-17-ai-native-erp-reverse-engineering-design.md",
+        "d13d11260db5fc5286140424b182e6ab507bd983",
+    ),
+    "source:gjperp.program-roadmap": (
+        "docs/superpowers/plans/2026-07-18-erp-reverse-engineering-program-roadmap.md",
+        "0f85ffe7ebda979251335df3d28171ac186538c7",
+    ),
+    "source:gjperp.phase0-baseline": (
+        "docs/as-is/coverage/phase-0-baseline-report.md",
+        "2e7601019ee59c9cd9b1abbf328cdb1d381d6ca7",
+    ),
+    "source:gjperp.phase2-stable-id": (
+        "docs/as-is/code/phase-2-schema-and-stable-id.md",
+        "24d428e51feefbdb9bee30595dd4a0214935b96d",
+    ),
+    "source:gjperp.phase1-runtime": (
+        "docs/as-is/runtime/phase1-execution-report.md",
+        "db9883510d5ec719794707a659a4d76e72dff78a",
+    ),
+    "source:gjperp.phase2-runtime": (
+        "docs/as-is/runtime/phase2-execution-report.md",
+        "24d428e51feefbdb9bee30595dd4a0214935b96d",
+    ),
+    "source:gjperp.phase3-runtime": (
+        "docs/as-is/runtime/phase3-execution-report.md",
+        "fba6908cd104f6f8f089f73062ad75509c06db1f",
+    ),
+    "source:gjperp.phase4-runtime": (
+        "docs/as-is/runtime/phase4-execution-report.md",
+        "3f3fb3ec90680d4cf161ae8b7d59141eddc27a74",
+    ),
+    "source:gjperp.phase5-trade": (
+        "docs/as-is/trade/overview.md",
+        "30d0b0ea8fe42ce8479e84f28896999ee5dba521",
+    ),
+    "source:gjperp.phase6-finance": (
+        "docs/as-is/finance/overview.md",
+        "e8d69a48129aca0e9fd4912d2d14e72c1d459a84",
+    ),
+}
+GJPERP_CASE_MEASUREMENTS = {
+    "outcome:gjperp.phase0-denominator": (
+        "8,342 assets; 5,632 track; 2,692 manifest-only; 18 ignore",
+        "Phase 0",
+        "2026-07-17T19:59:32+00:00",
+        "source:gjperp.phase0-baseline",
+    ),
+    "outcome:gjperp.phase2-atlas": (
+        "4,314/4,314 source files parsed; 0 silent omissions; 66,672 nodes; "
+        "175,432 relations; P2=91,993",
+        "Phase 2",
+        "2026-09-01T16:15:00+08:00",
+        "source:gjperp.phase2-runtime",
+    ),
+    "outcome:gjperp.phase3-coverage": (
+        "structural 5,705/5,705; static_semantic 3,133/5,705; "
+        "runtime 10/5,705; database 147/1,373",
+        "Phase 3",
+        "2026-09-01T00:00:00Z",
+        "source:gjperp.phase3-runtime",
+    ),
+    "outcome:gjperp.phase4-coverage": (
+        "database_field 386/386; runtime_scenario 19/19; "
+        "static_semantic 476/476; structural 5,064/5,064; "
+        "trace_chain 0/82; source delta 0; clone not removed 0",
+        "Phase 4",
+        "2026-09-02T00:00:00Z",
+        "source:gjperp.phase4-runtime",
+    ),
+    "outcome:gjperp.phase5-parent": (
+        "boundary 1/1; child_checkpoint 4/4; cross_invariant 7/10; "
+        "cross_link 10/10; cross_projection 10/10; runtime_scenario 0/10",
+        "Phase 5",
+        "2026-09-02T00:00:00Z",
+        "source:gjperp.phase5-trade",
+    ),
+    "outcome:gjperp.phase6-parent": (
+        "8 invariant families; P0=0; P1=0; P2=8; P3=0",
+        "Phase 6D",
+        "2026-09-03T06:45:00+08:00",
+        "source:gjperp.phase6-finance",
+    ),
+}
 LAYOUT_PARTITION_CONTRACT = {
     "human-docs": ("knowledge/human/", "authored", "writable-canonical"),
     "machine-records": ("knowledge/records/", "authored", "writable-canonical"),
@@ -317,6 +423,7 @@ LINK_SOURCE_DOCUMENTS = (
     *ACCESS_TRACK_DOCUMENTS.values(),
     *STACK_DOCUMENTS.values(),
     *OPERATING_PROFILE_DOCUMENTS.values(),
+    *CASE_STUDY_DOCUMENTS.values(),
 )
 ALLOWED_MATURITY_LABELS = (
     "cross-project-validated",
@@ -551,6 +658,11 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
     def read_operating_profile(self, name):
         path = OPERATING_PROFILE_DOCUMENTS[name]
         self.assertTrue(path.is_file(), f"missing operating profile: {path}")
+        return path.read_text(encoding="utf-8")
+
+    def read_case_study(self, name):
+        path = CASE_STUDY_DOCUMENTS[name]
+        self.assertTrue(path.is_file(), f"missing case study: {path}")
         return path.read_text(encoding="utf-8")
 
     def assert_operating_profile_contract(self, metadata, expected_profile):
@@ -1612,6 +1724,153 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.assertEqual(len(headers), len(values), f"malformed table row: {line}")
             rows.append(dict(zip(headers, values)))
         return rows
+
+    def assert_gjperp_case_source_contract(self, document):
+        rows = self.markdown_table(document, "## 来源链接")
+        self.assertTrue(rows)
+        self.assertEqual(
+            {"source_id", "phase_or_role", "source_path", "immutable_source"},
+            set(rows[0]),
+        )
+        by_id = {row["source_id"]: row for row in rows}
+        self.assertEqual(set(GJPERP_CASE_SOURCES), set(by_id))
+        self.assertEqual(len(rows), len(by_id))
+        for source_id, (source_path, commit) in GJPERP_CASE_SOURCES.items():
+            row = by_id[source_id]
+            self.assertRegex(source_id, STABLE_ID_PATTERN)
+            self.assertTrue(row["phase_or_role"].strip())
+            self.assertEqual(source_path, row["source_path"])
+            expected_url = (
+                "https://github.com/zzhongster/gjpERP/blob/"
+                f"{commit}/{source_path}"
+            )
+            match = re.fullmatch(
+                r"\[不可变提交\]\((https://github\.com/zzhongster/gjpERP/blob/[^)]+)\)",
+                row["immutable_source"],
+            )
+            self.assertIsNotNone(match, f"invalid immutable source: {source_id}")
+            self.assertEqual(expected_url, match.group(1))
+
+    def assert_gjperp_case_measurement_contract(self, document):
+        rows = self.markdown_table(document, "### 计数注脚")
+        self.assertTrue(rows)
+        self.assertEqual(
+            {
+                "outcome_id",
+                "measurement",
+                "phase",
+                "measured_at",
+                "source_id",
+                "boundary",
+            },
+            set(rows[0]),
+        )
+        by_id = {row["outcome_id"]: row for row in rows}
+        self.assertEqual(set(GJPERP_CASE_MEASUREMENTS), set(by_id))
+        self.assertEqual(len(rows), len(by_id))
+        for outcome_id, expected in GJPERP_CASE_MEASUREMENTS.items():
+            measurement, phase, measured_at, source_id = expected
+            row = by_id[outcome_id]
+            self.assertRegex(outcome_id, STABLE_ID_PATTERN)
+            self.assertEqual(measurement, row["measurement"])
+            self.assertEqual(phase, row["phase"])
+            self.assertEqual(measured_at, row["measured_at"])
+            self.assertEqual(source_id, row["source_id"])
+            self.assertIn(source_id, GJPERP_CASE_SOURCES)
+            self.assertRegex(
+                measured_at,
+                r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$",
+            )
+            self.assertTrue(row["boundary"].strip())
+
+    def assert_gjperp_case_method_contract(self, document):
+        rows = self.markdown_table(document, "## 已验证方法")
+        self.assertTrue(rows)
+        self.assertEqual(
+            {
+                "method_id",
+                "method",
+                "maturity",
+                "project_evidence",
+                "boundary",
+            },
+            set(rows[0]),
+        )
+        maturity = set()
+        method_ids = set()
+        for row in rows:
+            self.assertRegex(row["method_id"], STABLE_ID_PATTERN)
+            self.assertNotIn(row["method_id"], method_ids)
+            method_ids.add(row["method_id"])
+            self.assertTrue(row["method"].strip())
+            self.assertIn(row["maturity"], {"project-validated", "proposed"})
+            maturity.add(row["maturity"])
+            evidence_ids = {
+                value.strip()
+                for value in row["project_evidence"].split(",")
+                if value.strip()
+            }
+            self.assertTrue(evidence_ids)
+            self.assertTrue(evidence_ids.issubset(GJPERP_CASE_SOURCES))
+            self.assertTrue(row["boundary"].strip())
+        self.assertEqual({"project-validated", "proposed"}, maturity)
+        section = self.section_text(document, "## 已验证方法")
+        self.assertIn(
+            "同一 ERP 内的多个业务集群只是同一项目中的重复验证，不构成 "
+            "cross-project proof，也不能据此晋升为 Pattern。",
+            section,
+        )
+
+    def assert_gjperp_case_safety(self, document):
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+        self.assertNotRegex(
+            document,
+            r"(?:/Users/|/home/|/root/|[A-Za-z]:[\\/](?:Users|Documents and Settings)[\\/])",
+        )
+        self.assertNotRegex(
+            document,
+            r"(?i)(?:hostname|host_name|machine_name|username|user_name|"
+            r"account_id|tenant_id|customer_name|登录操作员|当前账套)\s*[:=：]",
+        )
+
+        approved_source_urls = {
+            "https://github.com/zzhongster/gjpERP/blob/"
+            f"{commit}/{source_path}"
+            for source_path, commit in GJPERP_CASE_SOURCES.values()
+        }
+
+        def retain_label_and_validate_target(match):
+            target = match.group(2).strip().removeprefix("<").removesuffix(">")
+            if re.match(r"^[a-z][a-z0-9+.-]*:", target, re.IGNORECASE):
+                self.assertIn(target, approved_source_urls)
+            return match.group(1)
+
+        safety_text = re.sub(
+            r"(?<!!)\[([^\]]+)\]\(([^)]+)\)",
+            retain_label_and_validate_target,
+            document,
+        )
+        source_paths = {item[0] for item in GJPERP_CASE_SOURCES.values()}
+
+        def replace_technical_literal(match):
+            literal = match.group(1)
+            if literal not in source_paths:
+                self.assertEqual(
+                    [],
+                    fixture_safety_errors({"code_symbol": literal}),
+                    f"unsafe code literal in case study: {literal}",
+                )
+            return "`technical-symbol`"
+
+        safety_text = re.sub(
+            r"`([^`\r\n]+)`", replace_technical_literal, safety_text
+        )
+        self.assertEqual(
+            [],
+            fixture_safety_errors({"case_study_text": safety_text}),
+        )
 
     def assert_local_markdown_links_resolve(self, source_path, document):
         links = re.findall(r"(?<!!)\[[^\]]+\]\(([^)]+)\)", document)
@@ -9110,6 +9369,141 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 revalidation_hides_affected_denominator,
                 full_program["schedule"],
             )
+
+    def test_gjperp_case_study_is_linked_and_has_substantive_sections(self):
+        case_name = "gjperp-delphi-erp"
+        path = CASE_STUDY_DOCUMENTS[case_name]
+        document = self.read_case_study(case_name)
+        self.assertIn(
+            "](case-studies/gjperp-delphi-erp.md)",
+            self.read_guide(),
+        )
+        self.assertEqual(1, document.count("**证据成熟度：`project-validated`**"))
+        self.assert_one_nonblank_applicability_declaration(document)
+        self.assert_guided_sections(document, REQUIRED_GJPERP_CASE_SECTIONS)
+        self.assert_local_markdown_links_resolve(path, document)
+
+    def test_gjperp_case_sources_and_measurements_are_commit_bound(self):
+        document = self.read_case_study("gjperp-delphi-erp")
+        self.assert_gjperp_case_source_contract(document)
+        self.assert_gjperp_case_measurement_contract(document)
+        source_section = self.section_text(document, "## 来源链接")
+        self.assertIn("只使用下列已提交、已脱敏的来源", source_section)
+        self.assertIn("不读取当前工作区临时态", source_section)
+
+    def test_gjperp_case_uses_stable_ids_typed_chains_and_core_claim_states(self):
+        document = self.read_case_study("gjperp-delphi-erp")
+        id_rows = self.markdown_table(document, "## 稳定 ID")
+        self.assertEqual(
+            {"object_id", "kind", "role", "claim_status", "evidence_refs"},
+            set(id_rows[0]),
+        )
+        object_ids = set()
+        for row in id_rows:
+            self.assertRegex(row["object_id"], STABLE_ID_PATTERN)
+            self.assertNotIn(row["object_id"], object_ids)
+            object_ids.add(row["object_id"])
+            self.assertIn(row["claim_status"], CLAIM_STATUSES)
+            evidence_refs = {
+                value.strip()
+                for value in row["evidence_refs"].split(",")
+                if value.strip()
+            }
+            self.assertTrue(evidence_refs)
+            self.assertTrue(evidence_refs.issubset(GJPERP_CASE_SOURCES))
+
+        chain_rows = self.markdown_table(document, "## 纵向证据链")
+        self.assertGreaterEqual(len(chain_rows), 2)
+        self.assertEqual(
+            {
+                "chain_id",
+                "ordered_path",
+                "claim_status",
+                "evidence_refs",
+                "boundary",
+            },
+            set(chain_rows[0]),
+        )
+        for row in chain_rows:
+            self.assertRegex(row["chain_id"], STABLE_ID_PATTERN)
+            self.assertGreaterEqual(len(row["ordered_path"].split("→")), 5)
+            self.assertIn(row["claim_status"], CLAIM_STATUSES)
+            evidence_refs = {
+                value.strip()
+                for value in row["evidence_refs"].split(",")
+                if value.strip()
+            }
+            self.assertTrue(evidence_refs)
+            self.assertTrue(evidence_refs.issubset(GJPERP_CASE_SOURCES))
+            self.assertTrue(row["boundary"].strip())
+
+        state_rows = self.markdown_table(document, "## 证据状态")
+        self.assertEqual(
+            {"claim_status", "meaning", "case_rule"}, set(state_rows[0])
+        )
+        self.assertEqual(CLAIM_STATUSES, {row["claim_status"] for row in state_rows})
+
+    def test_gjperp_case_methods_stay_within_single_project_maturity(self):
+        document = self.read_case_study("gjperp-delphi-erp")
+        self.assert_gjperp_case_method_contract(document)
+        related_links = {
+            "../../../patterns/freeze-phase-scoped-evidence-catalogs.md",
+            "../../../patterns/seed-dynamic-database-calls-explicitly.md",
+            "../../../anti-patterns/aggregate-probe-used-as-ui-behavior-proof.md",
+            "../../../anti-patterns/retrying-away-first-live-failure.md",
+            "../../../anti-patterns/ignored-evidence-without-durable-manifest.md",
+            "../../../experiments/2026-08-15-delphi-vcl-session-zero-ui-automation.md",
+        }
+        link_targets = set(re.findall(r"(?<!!)\[[^\]]+\]\(([^)]+)\)", document))
+        self.assertTrue(related_links.issubset(link_targets))
+
+    def test_gjperp_case_contract_rejects_section_source_count_and_maturity_mutations(self):
+        document = self.read_case_study("gjperp-delphi-erp")
+
+        missing_section = document.replace("## 安全克隆协议", "## 已删除克隆协议", 1)
+        with self.assertRaises(AssertionError):
+            self.section_text(missing_section, "## 安全克隆协议")
+
+        source_commit = GJPERP_CASE_SOURCES["source:gjperp.phase0-baseline"][1]
+        bad_source = document.replace(source_commit, "0" * 40, 1)
+        with self.assertRaises(AssertionError):
+            self.assert_gjperp_case_source_contract(bad_source)
+
+        measured_at = GJPERP_CASE_MEASUREMENTS[
+            "outcome:gjperp.phase0-denominator"
+        ][2]
+        missing_measurement_date = document.replace(measured_at, "", 1)
+        with self.assertRaises(AssertionError):
+            self.assert_gjperp_case_measurement_contract(missing_measurement_date)
+
+        promoted = document.replace(
+            "| `method:gjperp.horizontal-denominator` |",
+            "| `method:gjperp.horizontal-denominator` |",
+            1,
+        ).replace("| project-validated |", "| cross-project-validated |", 1)
+        with self.assertRaises(AssertionError):
+            self.assert_gjperp_case_method_contract(promoted)
+
+    def test_gjperp_case_sensitive_scan_uses_production_fixture_safety(self):
+        document = self.read_case_study("gjperp-delphi-erp")
+        self.assert_gjperp_case_safety(document)
+        technical_symbol = document.replace(
+            "## 适用边界",
+            "补充技术符号：`System.Collections.Generic.List`。\n\n## 适用边界",
+            1,
+        )
+        self.assert_gjperp_case_safety(technical_symbol)
+
+        unsafe_mutations = (
+            document + "\n\n/Users/example/private/capture.json\n",
+            document + "\n\npassword=example-credential-value\n",
+            document + "\n\nhostname: production-db-01\n",
+            document + "\n\ncustomer_name=ActualBusiness\n",
+        )
+        for mutation in unsafe_mutations:
+            with self.subTest(mutation=mutation[-64:]):
+                with self.assertRaises(AssertionError):
+                    self.assert_gjperp_case_safety(mutation)
 
     def test_guide_readme_links_every_foundation_document_relatively(self):
         guide = self.read_guide()
