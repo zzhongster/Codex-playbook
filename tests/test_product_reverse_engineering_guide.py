@@ -4175,7 +4175,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
 
         contributing = self.read_repo_file("CONTRIBUTING.md")
         self.assertIn("扫描所有字符串中的 IPv4/IPv6", contributing)
-        self.assertIn("真实 TLD", contributing)
+        self.assertIn("不依赖固定 TLD 清单", contributing)
 
     def test_fixture_safety_scans_high_confidence_network_tokens_in_all_strings(self):
         fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
@@ -4214,6 +4214,79 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertEqual(
             [], fixture_safety_errors(technical_and_documentation_values)
         )
+
+    def test_fixture_safety_rejects_any_dns_shaped_public_suffix(self):
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+        for hostname in (
+            "api.customer.shop",
+            "api.customer.online",
+            "api.customer.site",
+            "api.customer.hk",
+            "api.customer.sg",
+            "api.customer.futuretld",
+        ):
+            with self.subTest(hostname=hostname):
+                self.assertTrue(
+                    fixture_safety_errors({"note": f"observed={hostname}"})
+                )
+
+        contributing = self.read_repo_file("CONTRIBUTING.md")
+        self.assertIn("不依赖固定 TLD 清单", contributing)
+
+    def test_fixture_safety_uses_field_semantics_for_symbols_and_versions(self):
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+        technical_values = {
+            "type": "Acme.Platform.Widget",
+            "class_name": "Acme.Platform.Widget",
+            "symbol": "alpha.beta.Handler",
+            "package": "org.acme.orders",
+            "namespace": "Acme.Product",
+            "assembly": "Acme.Product.Core",
+            "module": "System.SysUtils",
+            "java_io_note": "java.io",
+            "java_net_note": "java.net",
+            "dotnet_io_note": "System.IO",
+            "dotnet_net_note": "System.Net",
+            "reverse_package_note": "com.sample.app",
+            "javax_note": "javax.crypto.Cipher",
+            "jakarta_note": "jakarta.persistence.Entity",
+            "kotlin_note": "kotlin.collections.List",
+            "scala_note": "scala.collection.Seq",
+            "version": "1.2.3.4",
+            "assembly_version": "10.20.30.40",
+            "file_version": "1.2.3.4",
+            "product_version": "10.20.30.40",
+            "not_an_ip": "999.20.30.40",
+        }
+        self.assertEqual([], fixture_safety_errors(technical_values))
+
+        for label, mutation in {
+            "IPv4 in note": {"note": "peer=1.2.3.4"},
+            "private IPv4 in note": {"note": "peer=10.20.30.40"},
+            "IPv4 in host": {"host": "1.2.3.4"},
+            "URL hidden in type": {
+                "type": "https://api.customer.shop/Widget"
+            },
+            "host label hidden in namespace": {
+                "namespace": "host:api.customer.online"
+            },
+            "credential hidden in symbol": {
+                "symbol": "token=abcdefghijklmnop"
+            },
+            "path hidden in module": {
+                "module": "/Users/alice/private/System.SysUtils"
+            },
+        }.items():
+            with self.subTest(label=label):
+                self.assertTrue(fixture_safety_errors(mutation))
+
+        contributing = self.read_repo_file("CONTRIBUTING.md")
+        self.assertIn("版本字段", contributing)
+        self.assertIn("字段语义", contributing)
 
     def test_fixture_safety_limits_business_checks_to_identity_fields(self):
         fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[

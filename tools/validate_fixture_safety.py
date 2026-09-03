@@ -53,7 +53,11 @@ _BUSINESS_RECORD_FILENAME = re.compile(
     r"(?![a-z0-9])"
 )
 _URL = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s\"'<>]+", re.IGNORECASE)
-_DOMAIN = re.compile(r"(?i)\b(?:[a-z0-9-]+\.)+[a-z]{2,63}\b")
+_DOMAIN = re.compile(
+    r"(?<![A-Za-z0-9_-])"
+    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+    r"[a-z]{2,63}(?![A-Za-z0-9_-])"
+)
 _IPV4 = re.compile(r"(?<![0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9])")
 _IPV6 = re.compile(
     r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}"
@@ -88,52 +92,31 @@ _SAFE_AUTHORIZATION_STATUSES = frozenset(
         "unauthorized",
     }
 )
-_REAL_TLDS = frozenset(
-    {
-        "ai",
-        "app",
-        "au",
-        "biz",
-        "ca",
-        "ch",
-        "cloud",
-        "cn",
-        "co",
-        "com",
-        "de",
-        "dev",
-        "edu",
-        "es",
-        "fr",
-        "gov",
-        "in",
-        "info",
-        "int",
-        "io",
-        "it",
-        "jp",
-        "me",
-        "mil",
-        "net",
-        "nl",
-        "no",
-        "org",
-        "ru",
-        "se",
-        "tech",
-        "tv",
-        "uk",
-        "us",
-        "xyz",
-    }
-)
 _DOCUMENTATION_DOMAINS = frozenset({"example.com", "example.net", "example.org"})
-_KNOWN_TECHNICAL_SYMBOLS = frozenset(
-    {"java.lang.String", "System.Collections.Generic.List", "System.SysUtils"}
+_TECHNICAL_FIELD = re.compile(
+    r"(?i)(?:^|[_-])(?:type|class|symbol|package|namespace|assembly|module|unit)"
+    r"(?:[_-](?:name|reference))?$"
+)
+_DOTTED_IDENTIFIER = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+"
+)
+_STANDARD_PLATFORM_SYMBOL = re.compile(
+    r"(?:java|javax|jakarta|kotlin|scala)"
+    r"(?:\.[A-Za-z_][A-Za-z0-9_]*)+"
+)
+_DOTNET_NAMESPACE = re.compile(
+    r"[A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)+"
+)
+_REVERSE_DOMAIN_PACKAGE = re.compile(
+    r"(?:com|org|net|io)(?:\.[a-z_][a-z0-9_]*)+"
 )
 _KNOWN_FIXTURE_FILE = re.compile(
     r"(?i)^[a-z0-9][a-z0-9_-]*\.(?:csv|html|json|log|md|txt|xml|yaml|yml)$"
 )
+_VERSION_FIELD = re.compile(
+    r"(?i)^(?:version|assembly_version|file_version|product_version)$"
+)
+_FOUR_PART_VERSION = re.compile(r"[0-9]+(?:\.[0-9]+){3}")
 _FICTIONAL_MARKER = re.compile(
     r"(?i)(?:^|[^a-z0-9])(?:demo|example|fictional|fixture|replace|sample|"
     r"synthetic|template|test)(?:[^a-z0-9]|$)"
@@ -186,22 +169,6 @@ def _reserved_host(host):
     return address in _RESERVED_IPV6
 
 
-def _stable_id_field(path_keys):
-    if not path_keys:
-        return False
-    leaf = path_keys[-1].lower()
-    parent = path_keys[-2].lower() if len(path_keys) > 1 else ""
-    return (
-        leaf == "id"
-        or leaf == "endpoint"
-        or leaf.endswith("_id")
-        or leaf.endswith("_reference")
-        or leaf.endswith("_references")
-        or parent.endswith("_references")
-        or leaf in {"chosen", "source_id", "target_id"}
-    )
-
-
 def _requires_fictional_metadata(path_keys):
     if not path_keys:
         return False
@@ -221,17 +188,12 @@ def _requires_fictional_metadata(path_keys):
     return False
 
 
-def _network_identifier_errors(identifier, path, require_real_tld=False):
+def _network_identifier_errors(identifier, path):
     normalized = identifier.strip("[]").rstrip(".")
     try:
         address = ipaddress.ip_address(normalized)
     except ValueError:
-        real_tld = normalized.rsplit(".", 1)[-1].lower() in _REAL_TLDS
-        if (
-            _DOMAIN.fullmatch(normalized)
-            and not _reserved_host(normalized)
-            and (not require_real_tld or real_tld)
-        ):
+        if _DOMAIN.fullmatch(normalized) and not _reserved_host(normalized):
             return [f"{path}: non-reserved domain {normalized.lower()}"]
         return []
     if not _reserved_host(str(address)):
@@ -263,6 +225,27 @@ def _has_authorization_credential_syntax(value):
 
 def _authorization_context(path_keys):
     return any(_AUTHORIZATION_FIELD.fullmatch(key) for key in path_keys[:-1])
+
+
+def _technical_symbol_literal(value, path_keys):
+    normalized = value.strip()
+    if not _DOTTED_IDENTIFIER.fullmatch(normalized):
+        return False
+    if path_keys and _TECHNICAL_FIELD.search(path_keys[-1]):
+        return True
+    return bool(
+        _STANDARD_PLATFORM_SYMBOL.fullmatch(normalized)
+        or _DOTNET_NAMESPACE.fullmatch(normalized)
+        or _REVERSE_DOMAIN_PACKAGE.fullmatch(normalized)
+    )
+
+
+def _four_part_version_literal(value, path_keys):
+    return bool(
+        path_keys
+        and _VERSION_FIELD.fullmatch(path_keys[-1])
+        and _FOUR_PART_VERSION.fullmatch(value.strip())
+    )
 
 
 def _string_safety_errors(value, path, path_keys):
@@ -311,25 +294,21 @@ def _string_safety_errors(value, path, path_keys):
 
     non_url_text = _URL.sub("", value)
     normalized_non_url_text = non_url_text.strip(" \t\r\n[](){}<>,;\"'")
-    stable_id_literal = bool(
-        _stable_id_field(path_keys) and _STABLE_ID.fullmatch(normalized_non_url_text)
-    )
+    stable_id_literal = bool(_STABLE_ID.fullmatch(normalized_non_url_text))
     precise_non_network_literal = bool(
-        value.strip() in _KNOWN_TECHNICAL_SYMBOLS
+        _technical_symbol_literal(value, path_keys)
         or _KNOWN_FIXTURE_FILE.fullmatch(value.strip())
     )
 
-    for pattern in (_IPV4, _IPV6):
-        for match in pattern.finditer(value):
+    if not _four_part_version_literal(value, path_keys):
+        for match in _IPV4.finditer(value):
             errors.extend(_network_identifier_errors(match.group(0), path))
+    for match in _IPV6.finditer(value):
+        errors.extend(_network_identifier_errors(match.group(0), path))
 
     if not stable_id_literal and not precise_non_network_literal:
         for match in _DOMAIN.finditer(non_url_text):
-            errors.extend(
-                _network_identifier_errors(
-                    match.group(0), path, require_real_tld=True
-                )
-            )
+            errors.extend(_network_identifier_errors(match.group(0), path))
 
     for match in _NETWORK_LABEL.finditer(non_url_text):
         errors.extend(_network_identifier_errors(match.group("target"), path))
