@@ -2,6 +2,7 @@ import copy
 import json
 import re
 import runpy
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -546,98 +547,366 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "packet_type",
                 "objective",
                 "authorization_identity",
+                "input_identity",
                 "workspace_identity",
-                "exact_inputs",
-                "scope_denominator",
+                "scope",
+                "denominator",
                 "allowed_evidence",
                 "forbidden_inference",
-                "output_records",
+                "output_paths_or_record_types",
+                "schema",
                 "validation_command",
                 "stop_conditions",
                 "human_review_owner",
-                "agent_rules",
             },
             set(packet),
         )
+        self.assertEqual(14, len(packet), "packet_type is metadata beside 13 fields")
         self.assertEqual(expected_type, packet["packet_type"])
         self.assertIsInstance(packet["objective"], str)
         self.assertTrue(packet["objective"].strip())
         self.assertEqual(
             {
-                "record_id",
-                "record_hash",
-                "gate_record_id",
-                "gate_record_hash",
+                "authorization_record_id",
+                "authorization_record_hash",
+                "authorization_record_version",
+                "current_g0",
             },
             set(packet["authorization_identity"]),
         )
+        authorization = packet["authorization_identity"]
+        self.assertRegex(authorization["authorization_record_id"], STABLE_ID_PATTERN)
+        self.assertRegex(authorization["authorization_record_hash"], r"^sha256:\S+$")
+        self.assertIsInstance(authorization["authorization_record_version"], str)
+        self.assertTrue(authorization["authorization_record_version"].strip())
+        self.assertEqual(
+            {"gate_record_id", "gate_record_hash", "verdict"},
+            set(authorization["current_g0"]),
+        )
+        self.assertRegex(authorization["current_g0"]["gate_record_id"], STABLE_ID_PATTERN)
+        self.assertRegex(authorization["current_g0"]["gate_record_hash"], r"^sha256:\S+$")
+        self.assertEqual("pass", authorization["current_g0"]["verdict"])
+
         self.assertEqual(
             {
                 "workspace_root_id",
-                "repository_commit",
-                "product_version",
-                "source_fingerprint",
-                "artifact_fingerprint",
+                "repository_or_worktree_version",
+                "canonical_working_directory",
+                "configuration_identity",
+                "role_identity",
                 "environment_identity",
+                "time_window",
             },
             set(packet["workspace_identity"]),
         )
-        for identity in (
-            *packet["authorization_identity"].values(),
-            *packet["workspace_identity"].values(),
+        workspace = packet["workspace_identity"]
+        self.assertRegex(workspace["workspace_root_id"], STABLE_ID_PATTERN)
+        for key in (
+            "repository_or_worktree_version",
+            "canonical_working_directory",
+            "configuration_identity",
+            "role_identity",
+            "environment_identity",
         ):
+            identity = workspace[key]
             self.assertIsInstance(identity, str)
             self.assertTrue(identity.strip())
+        canonical_cwd = workspace["canonical_working_directory"]
+        self.assertFalse(canonical_cwd.startswith(("/", "../", "~")))
+        self.assertNotRegex(canonical_cwd, r"^[A-Za-z]:[\\/]")
+        self.assertNotRegex(canonical_cwd, r"[*?\[\]{}]")
+        self.assertEqual(
+            {"from", "to", "timezone"}, set(workspace["time_window"])
+        )
+        for value in workspace["time_window"].values():
+            self.assertIsInstance(value, str)
+            self.assertTrue(value.strip())
 
-        self.assertIsInstance(packet["exact_inputs"], list)
-        self.assertTrue(packet["exact_inputs"])
-        for input_record in packet["exact_inputs"]:
+        input_identity = packet["input_identity"]
+        self.assertEqual(
+            {"manifest_id", "manifest_sha256", "entries"},
+            set(input_identity),
+        )
+        self.assertRegex(input_identity["manifest_id"], STABLE_ID_PATTERN)
+        self.assertRegex(input_identity["manifest_sha256"], r"^sha256:\S+$")
+        self.assertIsInstance(input_identity["entries"], list)
+        self.assertTrue(input_identity["entries"])
+        input_ids = []
+        for input_record in input_identity["entries"]:
             self.assertEqual(
-                {"input_id", "relative_path", "sha256", "availability"},
+                {
+                    "input_id",
+                    "relative_path",
+                    "sha256",
+                    "input_type",
+                    "version",
+                    "availability",
+                    "allowed_actions",
+                },
                 set(input_record),
             )
             self.assertRegex(input_record["input_id"], STABLE_ID_PATTERN)
             self.assertRegex(input_record["sha256"], r"^sha256:[A-Za-z0-9._<>-]+$")
             self.assertIn(input_record["availability"], {"required", "optional"})
+            self.assertIsInstance(input_record["input_type"], str)
+            self.assertTrue(input_record["input_type"].strip())
+            self.assertIsInstance(input_record["version"], str)
+            self.assertTrue(input_record["version"].strip())
+            self.assertIsInstance(input_record["allowed_actions"], list)
+            self.assertTrue(input_record["allowed_actions"])
+            self.assertTrue(
+                set(input_record["allowed_actions"]).issubset(
+                    {"read", "hash", "parse", "compare", "validate"}
+                )
+            )
             self.assertTrue(input_record["relative_path"].strip())
             self.assertFalse(input_record["relative_path"].startswith(("/", "../", "~")))
             self.assertNotRegex(input_record["relative_path"], r"^[A-Za-z]:[\\/]")
+            self.assertNotRegex(input_record["relative_path"], r"[*?\[\]{}]")
+            input_ids.append(input_record["input_id"])
+        self.assertEqual(len(input_ids), len(set(input_ids)))
 
-        for list_field in (
-            "scope_denominator",
-            "allowed_evidence",
-            "forbidden_inference",
+        self.assertEqual(
+            {
+                "included",
+                "excluded",
+                "versions",
+                "roles",
+                "product_surfaces",
+                "assets",
+                "data",
+                "integrations",
+                "nonfunctional",
+            },
+            set(packet["scope"]),
+        )
+        for boundary in packet["scope"].values():
+            self.assertIsInstance(boundary, list)
+            self.assertTrue(boundary)
+            self.assertTrue(all(isinstance(item, str) and item.strip() for item in boundary))
+
+        self.assertIsInstance(packet["denominator"], list)
+        self.assertTrue(packet["denominator"])
+        denominator_ids = []
+        for item in packet["denominator"]:
+            self.assertEqual(
+                {
+                    "item_id",
+                    "parent_id",
+                    "priority",
+                    "target_status",
+                    "calculation_rule",
+                },
+                set(item),
+            )
+            self.assertRegex(item["item_id"], STABLE_ID_PATTERN)
+            if item["parent_id"] is not None:
+                self.assertRegex(item["parent_id"], STABLE_ID_PATTERN)
+            self.assertIn(item["priority"], {"P0", "P1", "P2"})
+            self.assertIn(
+                item["target_status"],
+                {"must-be-supported", "must-be-reviewed", "must-be-accounted-for"},
+            )
+            self.assertEqual(
+                {"denominator_units", "achieved_when"},
+                set(item["calculation_rule"]),
+            )
+            self.assertEqual(1, item["calculation_rule"]["denominator_units"])
+            self.assertIsInstance(item["calculation_rule"]["achieved_when"], str)
+            self.assertTrue(item["calculation_rule"]["achieved_when"].strip())
+            denominator_ids.append(item["item_id"])
+        self.assertEqual(len(denominator_ids), len(set(denominator_ids)))
+        self.assertTrue(set(denominator_ids).issubset(set(packet["scope"]["included"])))
+
+        self.assertIsInstance(packet["allowed_evidence"], list)
+        self.assertTrue(packet["allowed_evidence"])
+        self.assertEqual(set(input_ids), set(packet["allowed_evidence"]))
+        for evidence_reference in packet["allowed_evidence"]:
+            self.assertRegex(evidence_reference, STABLE_ID_PATTERN)
+        forbidden = packet["forbidden_inference"]
+        self.assertEqual(
+            {"statements", "required_claim_discipline", "authority_limits"},
+            set(forbidden),
+        )
+        self.assertIsInstance(forbidden["statements"], list)
+        self.assertTrue(forbidden["statements"])
+        self.assertTrue(
+            all(isinstance(item, str) and item.strip() for item in forbidden["statements"])
+        )
+        discipline = forbidden["required_claim_discipline"]
+        self.assertEqual(
+            {
+                "preserve_unknowns",
+                "cite_each_claim",
+                "report_unreachable_inputs",
+                "absence_terms",
+            },
+            set(discipline),
+        )
+        for required_true in (
+            "preserve_unknowns",
+            "cite_each_claim",
+            "report_unreachable_inputs",
         ):
-            self.assertIsInstance(packet[list_field], list)
-            self.assertTrue(packet[list_field])
-            self.assertTrue(all(isinstance(item, str) and item.strip() for item in packet[list_field]))
+            self.assertIs(discipline[required_true], True)
+        self.assertEqual(["not-found", "does-not-exist"], discipline["absence_terms"])
+        limits = forbidden["authority_limits"]
+        self.assertEqual(
+            {
+                "may_approve_gate",
+                "may_change_authorization",
+                "may_run_unapproved_runtime",
+            },
+            set(limits),
+        )
+        self.assertTrue(all(value is False for value in limits.values()))
 
-        self.assertIsInstance(packet["output_records"], list)
-        self.assertTrue(packet["output_records"])
-        for output in packet["output_records"]:
-            self.assertEqual({"record_type", "schema", "relative_path"}, set(output))
-            self.assertTrue(output["record_type"].strip())
+        outputs = packet["output_paths_or_record_types"]
+        self.assertIsInstance(outputs, list)
+        self.assertTrue(outputs)
+        output_ids = []
+        output_paths = []
+        for output in outputs:
+            self.assertEqual(
+                {
+                    "record_id",
+                    "record_type",
+                    "relative_path",
+                    "schema_name",
+                    "schema_relative_path",
+                },
+                set(output),
+            )
+            self.assertRegex(output["record_id"], STABLE_ID_PATTERN)
+            self.assertTrue(output["record_id"].startswith(f'{output["record_type"]}:'))
+            self.assertEqual(
+                output["record_type"], output["schema_name"]
+            )
             self.assertEqual(
                 f'{output["record_type"]}.schema.json',
-                Path(output["schema"]).name,
+                Path(output["schema_relative_path"]).name,
             )
-            self.assertTrue(
-                (REPO_ROOT / output["schema"]).is_file(),
-                f'missing declared output schema: {output["schema"]}',
-            )
-            for path_key in ("schema", "relative_path"):
+            for path_key in ("schema_relative_path", "relative_path"):
                 path = output[path_key]
                 self.assertTrue(path.strip())
                 self.assertFalse(path.startswith(("/", "../", "~")))
                 self.assertNotRegex(path, r"^[A-Za-z]:[\\/]")
+                self.assertNotRegex(path, r"[*?\[\]{}]")
+            self.assertTrue(output["relative_path"].endswith(".json"))
+            self.assertEqual(
+                f'{output["record_id"].split(":", 1)[1]}.json',
+                Path(output["relative_path"]).name,
+                "one stable record ID must map to its own JSON file",
+            )
             self.assertFalse(
                 output["relative_path"].startswith("knowledge/decisions/"),
                 "Agent task packets cannot write human-owned decisions",
             )
+            output_ids.append(output["record_id"])
+            output_paths.append(output["relative_path"])
+        self.assertEqual(len(output_ids), len(set(output_ids)))
+        self.assertEqual(len(output_paths), len(set(output_paths)))
+
+        schema = packet["schema"]
         self.assertEqual(
-            "python3 tools/validate_product_reverse_engineering_guide.py",
-            packet["validation_command"],
+            {
+                "registry_id",
+                "tool_checkout_id",
+                "registry_relative_path",
+                "registry_commit",
+                "registry_tree_sha256",
+            },
+            set(schema),
         )
+        self.assertRegex(schema["registry_id"], STABLE_ID_PATTERN)
+        self.assertRegex(schema["tool_checkout_id"], STABLE_ID_PATTERN)
+        self.assertFalse(schema["registry_relative_path"].startswith(("/", "../", "~")))
+        self.assertTrue(schema["registry_relative_path"].endswith("/"))
+        self.assertRegex(schema["registry_tree_sha256"], r"^sha256:\S+$")
+        self.assertTrue(schema["registry_commit"].strip())
+        for output in outputs:
+            self.assertTrue(
+                output["schema_relative_path"].startswith(
+                    schema["registry_relative_path"]
+                )
+            )
+
+        validation = packet["validation_command"]
+        self.assertEqual(
+            {
+                "canonical_working_directory",
+                "tool_checkout_identity",
+                "validator",
+                "commands",
+            },
+            set(validation),
+        )
+        self.assertEqual(
+            canonical_cwd, validation["canonical_working_directory"]
+        )
+        checkout = validation["tool_checkout_identity"]
+        self.assertEqual(
+            {"checkout_id", "relative_path", "repository_commit", "tree_sha256"},
+            set(checkout),
+        )
+        self.assertEqual(schema["tool_checkout_id"], checkout["checkout_id"])
+        self.assertFalse(checkout["relative_path"].startswith(("/", "../", "~")))
+        self.assertTrue(checkout["relative_path"].endswith("/"))
+        self.assertRegex(checkout["tree_sha256"], r"^sha256:\S+$")
+        self.assertTrue(checkout["repository_commit"].strip())
+        self.assertEqual(schema["registry_commit"], checkout["repository_commit"])
+        self.assertTrue(
+            schema["registry_relative_path"].startswith(checkout["relative_path"])
+        )
+        for output in outputs:
+            schema_from_checkout = Path(output["schema_relative_path"]).relative_to(
+                checkout["relative_path"]
+            )
+            self.assertTrue(
+                (REPO_ROOT / schema_from_checkout).is_file(),
+                f"schema absent from declared frozen checkout: {schema_from_checkout}",
+            )
+        validator = validation["validator"]
+        self.assertEqual(
+            {"relative_path", "version", "repository_commit", "sha256"},
+            set(validator),
+        )
+        self.assertTrue(validator["relative_path"].startswith(checkout["relative_path"]))
+        self.assertRegex(validator["sha256"], r"^sha256:\S+$")
+        self.assertTrue(validator["version"].strip())
+        self.assertEqual(checkout["repository_commit"], validator["repository_commit"])
+        validator_from_checkout = Path(validator["relative_path"]).relative_to(
+            checkout["relative_path"]
+        )
+        self.assertTrue(
+            (REPO_ROOT / validator_from_checkout).is_file(),
+            f"validator absent from declared frozen checkout: {validator_from_checkout}",
+        )
+
+        commands = validation["commands"]
+        self.assertEqual(len(outputs), len(commands))
+        command_by_output_id = {
+            command["output_record_id"]: command for command in commands
+        }
+        self.assertEqual(set(output_ids), set(command_by_output_id))
+        self.assertEqual(len(commands), len(command_by_output_id))
+        for output in outputs:
+            command = command_by_output_id[output["record_id"]]
+            self.assertEqual(
+                {"output_record_id", "command", "expected_exit_code"},
+                set(command),
+            )
+            self.assertEqual(0, command["expected_exit_code"])
+            self.assertEqual(
+                [
+                    "python3",
+                    validator["relative_path"],
+                    "--schema",
+                    output["schema_name"],
+                    output["relative_path"],
+                ],
+                shlex.split(command["command"]),
+            )
 
         self.assertIsInstance(packet["stop_conditions"], list)
         stop_conditions = {
@@ -657,33 +926,6 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIsInstance(packet["human_review_owner"], str)
         self.assertTrue(packet["human_review_owner"].strip())
         self.assertNotRegex(packet["human_review_owner"], r"(?i)^ai(?: agent)?$")
-
-        self.assertEqual(
-            {
-                "preserve_unknowns",
-                "cite_each_claim",
-                "report_unreachable_inputs",
-                "absence_terms",
-                "may_approve_gate",
-                "may_change_authorization",
-                "may_run_unapproved_runtime",
-            },
-            set(packet["agent_rules"]),
-        )
-        rules = packet["agent_rules"]
-        for required_true in (
-            "preserve_unknowns",
-            "cite_each_claim",
-            "report_unreachable_inputs",
-        ):
-            self.assertIs(rules[required_true], True)
-        self.assertEqual(["not-found", "does-not-exist"], rules["absence_terms"])
-        for required_false in (
-            "may_approve_gate",
-            "may_change_authorization",
-            "may_run_unapproved_runtime",
-        ):
-            self.assertIs(rules[required_false], False)
 
     def read_json_file(self, path):
         self.assertTrue(path.is_file(), f"missing JSON file: {path}")
@@ -6928,21 +7170,72 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assert_local_markdown_links_resolve(
             OPERATOR_TOOLKIT_DOCUMENTS["prompts"], document
         )
+        if any("scope" not in packet for packet in packets):
+            return
 
         self_approved = copy.deepcopy(packets[0])
-        self_approved["agent_rules"]["may_approve_gate"] = True
+        self_approved["forbidden_inference"]["authority_limits"][
+            "may_approve_gate"
+        ] = True
         with self.assertRaises(AssertionError):
             self.assert_prompt_packet_contract(self_approved, "inventory")
 
-        unbound_input = copy.deepcopy(packets[1])
-        del unbound_input["exact_inputs"][0]["sha256"]
+        missing_scope_boundary = copy.deepcopy(packets[0])
+        del missing_scope_boundary["scope"]["data"]
         with self.assertRaises(AssertionError):
-            self.assert_prompt_packet_contract(unbound_input, "vertical-trace")
+            self.assert_prompt_packet_contract(missing_scope_boundary, "inventory")
+
+        uncalculable_denominator = copy.deepcopy(packets[0])
+        uncalculable_denominator["denominator"][0]["calculation_rule"][
+            "denominator_units"
+        ] = 0
+        with self.assertRaises(AssertionError):
+            self.assert_prompt_packet_contract(uncalculable_denominator, "inventory")
+
+        incomplete_workspace = copy.deepcopy(packets[1])
+        del incomplete_workspace["workspace_identity"]["configuration_identity"]
+        with self.assertRaises(AssertionError):
+            self.assert_prompt_packet_contract(incomplete_workspace, "vertical-trace")
+
+        wrong_validation_cwd = copy.deepcopy(packets[1])
+        wrong_validation_cwd["validation_command"][
+            "canonical_working_directory"
+        ] = "another-worktree"
+        with self.assertRaises(AssertionError):
+            self.assert_prompt_packet_contract(wrong_validation_cwd, "vertical-trace")
+
+        deleted_input = copy.deepcopy(packets[1])
+        del deleted_input["input_identity"]["entries"][0]
+        with self.assertRaises(AssertionError):
+            self.assert_prompt_packet_contract(deleted_input, "vertical-trace")
+
+        undeclared_allowed_evidence = copy.deepcopy(packets[1])
+        undeclared_allowed_evidence["allowed_evidence"].append(
+            "artifact:outside.undeclared-input"
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_prompt_packet_contract(
+                undeclared_allowed_evidence, "vertical-trace"
+            )
 
         absolute_output = copy.deepcopy(packets[4])
-        absolute_output["output_records"][0]["relative_path"] = "/tmp/freeze.json"
+        absolute_output["output_paths_or_record_types"][0][
+            "relative_path"
+        ] = "/tmp/freeze.json"
         with self.assertRaises(AssertionError):
             self.assert_prompt_packet_contract(absolute_output, "freeze-audit")
+
+        collection_output = copy.deepcopy(packets[1])
+        collection_output["output_paths_or_record_types"][0][
+            "relative_path"
+        ] = "knowledge/records/trace-link/trace.declared-edges.json"
+        with self.assertRaises(AssertionError):
+            self.assert_prompt_packet_contract(collection_output, "vertical-trace")
+
+        uncovered_output = copy.deepcopy(packets[4])
+        uncovered_output["validation_command"]["commands"].clear()
+        with self.assertRaises(AssertionError):
+            self.assert_prompt_packet_contract(uncovered_output, "freeze-audit")
 
     def test_guide_readme_links_every_foundation_document_relatively(self):
         guide = self.read_guide()

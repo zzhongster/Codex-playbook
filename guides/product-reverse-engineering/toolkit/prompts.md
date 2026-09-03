@@ -2,53 +2,128 @@
 
 **证据成熟度：`proposed`**
 
-**适用范围：** 用于把已批准、边界明确的逆向子任务交给 AI Agent；这些任务包只允许分析已列输入和起草候选记录，不授予 Agent 批准门禁、改变授权、接受风险或执行未批准运行实验的权力。
+**适用范围：** 用于把已批准、边界明确的逆向子任务交给 AI Agent；任务包只允许处理闭合输入 manifest 并写入闭合输出 manifest，不授予 Agent 批准门禁、改变授权、接受风险或执行未批准运行实验的权力。
 
-复制后必须在分派前替换所有 `<fill-before-dispatch>` 值，并重新计算输入哈希；仍含占位值的任务包无效。路径以[项目证据仓布局](project-layout.md)中的工作区身份为根，字段语义遵循[人机协作](../core/human-agent-collaboration.md)。Agent 必须保留未知、逐条主张引用证据、报告不可到达输入，并严格区分 `not-found`（在声明搜索边界内未找到）与 `does-not-exist`（有足以排除替代位置的证据）；前者不得自动升级为后者。
+每个 YAML 块由 `packet_type` 包络元数据和[人机协作](../core/human-agent-collaboration.md)规定的恰好十三项核心字段组成。复制后必须替换全部 `<fill-before-dispatch>`，计算 manifest/文件/工具哈希，并由分派人和 `human_review_owner` 复核；仍有占位值的包不得执行。
+
+`input_identity.entries` 是闭合的不可变输入清单，`allowed_evidence` 只能引用其中 ID；自然语言不能扩大证据范围。`output_paths_or_record_types` 每项只代表一个稳定 ID 和一个 JSON 文件，不得写集合文件、目录或 glob。发现新输入或新对象时停止并请求新版任务包。所有验证命令从 `workspace_identity.canonical_working_directory` 执行，且通过冻结的 vendor checkout 精确绑定工具版本、commit 与哈希。
+
+所有包强制保留未知、逐 claim 引用 evidence、报告不可到达输入，并区分 `not-found` 与 `does-not-exist`。前者只表示在声明分母、路径、版本、查询和权限内未找到；没有排除替代位置的证据时不得使用后者。
 
 ## inventory
 
-用途：在冻结输入内生成资产候选目录和未到达清单，不解释运行行为。
+用途：为一个预先声明的资产分母项生成单对象资产记录与单对象覆盖记录；更多资产需要在新版包的输出 manifest 中逐项列出。
 
 ```yaml
 packet_type: inventory
-objective: "枚举冻结范围内的产品与技术资产，为 Phase 3 图谱提供可复核候选，不声称未找到资产不存在。"
+objective: "核对冻结范围内一个已声明资产分母项，生成可复核的单对象资产记录和覆盖记录，不把未找到解释为不存在。"
 authorization_identity:
-  record_id: "decision:phase0.authorization"
-  record_hash: "sha256:<fill-before-dispatch>"
-  gate_record_id: "gate:phase0.g0-authorization"
-  gate_record_hash: "sha256:<fill-before-dispatch>"
+  authorization_record_id: "decision:phase0.authorization"
+  authorization_record_hash: "sha256:<fill-before-dispatch>"
+  authorization_record_version: "<fill-before-dispatch>"
+  current_g0:
+    gate_record_id: "gate:phase0.g0-authorization"
+    gate_record_hash: "sha256:<fill-before-dispatch>"
+    verdict: pass
+input_identity:
+  manifest_id: "manifest:inventory.inputs-v1"
+  manifest_sha256: "sha256:<fill-before-dispatch>"
+  entries:
+    - input_id: "artifact:phase1.baseline"
+      relative_path: "knowledge/records/artifact/phase1.baseline.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: baseline-record
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, parse, compare]
+    - input_id: "artifact:phase1.denominator"
+      relative_path: "knowledge/coverage/phase1.denominator.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: denominator-record
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, parse, compare]
 workspace_identity:
   workspace_root_id: "workspace:target.reverse-engineering"
-  repository_commit: "<fill-before-dispatch>"
-  product_version: "<fill-before-dispatch>"
-  source_fingerprint: "sha256:<fill-before-dispatch>"
-  artifact_fingerprint: "sha256:<fill-before-dispatch>"
-  environment_identity: "environment:static.authorized-snapshot"
-exact_inputs:
-  - input_id: "artifact:phase1.baseline"
-    relative_path: "knowledge/records/artifact/phase1.baseline.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-  - input_id: "artifact:phase1.denominator"
-    relative_path: "knowledge/coverage/phase1.denominator.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-scope_denominator:
-  - "只处理 ART-P1-DENOM 中标为 in-scope 的稳定 ID；逐项回报 covered、not-found、unreachable 或 excluded。"
+  repository_or_worktree_version: "<fill-before-dispatch>"
+  canonical_working_directory: "."
+  configuration_identity: "configuration:target.inventory-snapshot"
+  role_identity: "role:analyst.inventory-reader"
+  environment_identity: "environment:target.static-snapshot"
+  time_window:
+    from: "<fill-before-dispatch>"
+    to: "<fill-before-dispatch>"
+    timezone: "<fill-before-dispatch>"
+scope:
+  included: ["denominator:inventory.target-asset"]
+  excluded: ["scope:inventory.all-other-assets"]
+  versions: ["<fill-before-dispatch>"]
+  roles: ["role:analyst.inventory-reader"]
+  product_surfaces: ["surface:inventory.declared-entry"]
+  assets: ["asset:inventory.target-entry"]
+  data: ["data:inventory.metadata-only"]
+  integrations: ["integration:inventory.none-authorized"]
+  nonfunctional: ["nonfunctional:inventory.read-only"]
+denominator:
+  - item_id: "denominator:inventory.target-asset"
+    parent_id: null
+    priority: P1
+    target_status: must-be-accounted-for
+    calculation_rule:
+      denominator_units: 1
+      achieved_when: "声明 asset 记录通过指定 schema，引用 manifest 内证据，且覆盖记录明确为 supported、not-found、unreachable 或 excluded 之一。"
 allowed_evidence:
-  - "只读冻结源码、制品清单、配置清单和已脱敏索引；不得打开未列目录或外部系统。"
+  - "artifact:phase1.baseline"
+  - "artifact:phase1.denominator"
 forbidden_inference:
-  - "不得从文件名、依赖存在、静态可达或框架惯例推断功能已部署、已启用或已运行。"
-  - "不得把 not-found 改写为 does-not-exist。"
-output_records:
-  - record_type: asset
-    schema: "guides/product-reverse-engineering/toolkit/schemas/asset.schema.json"
-    relative_path: "knowledge/records/asset/inventory.candidates.json"
-  - record_type: coverage-summary
-    schema: "guides/product-reverse-engineering/toolkit/schemas/coverage-summary.schema.json"
-    relative_path: "knowledge/coverage/inventory.summary.json"
-validation_command: "python3 tools/validate_product_reverse_engineering_guide.py"
+  statements:
+    - "不得从文件名、依赖存在、静态可达或框架惯例推断功能已部署、已启用或已运行。"
+    - "不得把 not-found 改写为 does-not-exist。"
+  required_claim_discipline:
+    preserve_unknowns: true
+    cite_each_claim: true
+    report_unreachable_inputs: true
+    absence_terms: [not-found, does-not-exist]
+  authority_limits:
+    may_approve_gate: false
+    may_change_authorization: false
+    may_run_unapproved_runtime: false
+output_paths_or_record_types:
+  - record_id: "asset:inventory.target-entry"
+    record_type: asset
+    relative_path: "knowledge/records/asset/inventory.target-entry.json"
+    schema_name: asset
+    schema_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/asset.schema.json"
+  - record_id: "coverage-summary:inventory.target-entry"
+    record_type: coverage-summary
+    relative_path: "knowledge/coverage/inventory.target-entry.json"
+    schema_name: coverage-summary
+    schema_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/coverage-summary.schema.json"
+schema:
+  registry_id: "schema-registry:product-reverse-engineering.v1"
+  tool_checkout_id: "workspace:vendor.codex-playbook"
+  registry_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/"
+  registry_commit: "<fill-before-dispatch>"
+  registry_tree_sha256: "sha256:<fill-before-dispatch>"
+validation_command:
+  canonical_working_directory: "."
+  tool_checkout_identity:
+    checkout_id: "workspace:vendor.codex-playbook"
+    relative_path: "vendor/codex-playbook/"
+    repository_commit: "<fill-before-dispatch>"
+    tree_sha256: "sha256:<fill-before-dispatch>"
+  validator:
+    relative_path: "vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py"
+    version: "<fill-before-dispatch>"
+    repository_commit: "<fill-before-dispatch>"
+    sha256: "sha256:<fill-before-dispatch>"
+  commands:
+    - output_record_id: "asset:inventory.target-entry"
+      command: "python3 vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py --schema asset knowledge/records/asset/inventory.target-entry.json"
+      expected_exit_code: 0
+    - output_record_id: "coverage-summary:inventory.target-entry"
+      command: "python3 vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py --schema coverage-summary knowledge/coverage/inventory.target-entry.json"
+      expected_exit_code: 0
 stop_conditions:
   - condition: authorization-drift
     action: "stop-and-request-new-authorization"
@@ -59,63 +134,122 @@ stop_conditions:
   - condition: unsafe-or-unapproved-runtime
     action: "stop-and-escalate-to-safety-owner"
 human_review_owner: "逆向负责人"
-agent_rules:
-  preserve_unknowns: true
-  cite_each_claim: true
-  report_unreachable_inputs: true
-  absence_terms:
-    - not-found
-    - does-not-exist
-  may_approve_gate: false
-  may_change_authorization: false
-  may_run_unapproved_runtime: false
 ```
-
-执行输出还应列出实际搜索的相对路径、查询、工具版本、访问失败和分母计数。发现分母外资产只登记为候选并交给评审人，不自行扩张范围。
 
 ## vertical-trace
 
-用途：连接一个批准切片的入口、实现、数据/消息与可见结果，显式留下断点和替代解释。
+用途：为一个批准切片的一条预先声明关系生成单对象 trace-link 和对应单对象 claim；不得自行增加节点、边或输出文件。
 
 ```yaml
 packet_type: vertical-trace
-objective: "为选定切片建立逐边可审计的纵向追踪图；只把有对应证据的边写为已支持。"
+objective: "核对一个声明切片中的一条 source-target 关系，分别输出单对象 trace-link 与 claim，断点保持未知。"
 authorization_identity:
-  record_id: "decision:phase0.authorization"
-  record_hash: "sha256:<fill-before-dispatch>"
-  gate_record_id: "gate:phase0.g0-authorization"
-  gate_record_hash: "sha256:<fill-before-dispatch>"
+  authorization_record_id: "decision:phase0.authorization"
+  authorization_record_hash: "sha256:<fill-before-dispatch>"
+  authorization_record_version: "<fill-before-dispatch>"
+  current_g0:
+    gate_record_id: "gate:phase0.g0-authorization"
+    gate_record_hash: "sha256:<fill-before-dispatch>"
+    verdict: pass
+input_identity:
+  manifest_id: "manifest:vertical-trace.inputs-v1"
+  manifest_sha256: "sha256:<fill-before-dispatch>"
+  entries:
+    - input_id: "artifact:phase4.selected-slice"
+      relative_path: "knowledge/records/artifact/phase4.selected-slice.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: slice-record
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, parse, compare]
+    - input_id: "artifact:phase3.asset-atlas"
+      relative_path: "knowledge/records/artifact/phase3.asset-atlas.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: asset-atlas-record
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, parse, compare]
 workspace_identity:
   workspace_root_id: "workspace:target.reverse-engineering"
-  repository_commit: "<fill-before-dispatch>"
-  product_version: "<fill-before-dispatch>"
-  source_fingerprint: "sha256:<fill-before-dispatch>"
-  artifact_fingerprint: "sha256:<fill-before-dispatch>"
-  environment_identity: "environment:trace.authorized-snapshot"
-exact_inputs:
-  - input_id: "artifact:phase4.selected-slice"
-    relative_path: "knowledge/records/artifact/phase4.selected-slice.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-  - input_id: "artifact:phase3.asset-atlas"
-    relative_path: "knowledge/records/artifact/phase3.asset-atlas.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-scope_denominator:
-  - "仅覆盖切片记录列出的入口、角色、前置状态、成功/失败路径和必达层；每个节点状态单独计数。"
+  repository_or_worktree_version: "<fill-before-dispatch>"
+  canonical_working_directory: "."
+  configuration_identity: "configuration:target.trace-snapshot"
+  role_identity: "role:analyst.trace-reader"
+  environment_identity: "environment:target.trace-snapshot"
+  time_window:
+    from: "<fill-before-dispatch>"
+    to: "<fill-before-dispatch>"
+    timezone: "<fill-before-dispatch>"
+scope:
+  included: ["denominator:trace.declared-edge"]
+  excluded: ["scope:trace.other-edges"]
+  versions: ["<fill-before-dispatch>"]
+  roles: ["role:analyst.trace-reader"]
+  product_surfaces: ["surface:trace.declared-entry"]
+  assets: ["asset:trace.declared-source", "asset:trace.declared-target"]
+  data: ["data:trace.declared-context"]
+  integrations: ["integration:trace.declared-boundary"]
+  nonfunctional: ["nonfunctional:trace.no-runtime-execution"]
+denominator:
+  - item_id: "denominator:trace.declared-edge"
+    parent_id: null
+    priority: P0
+    target_status: must-be-supported
+    calculation_rule:
+      denominator_units: 1
+      achieved_when: "声明 trace-link 与 claim 两个 JSON 均通过各自 schema，端点、上下文和逐 claim evidence 引用闭合。"
 allowed_evidence:
-  - "使用已授权源码、制品、配置、脱敏日志/trace、数据库或消息索引中与该切片 ID 关联的证据项。"
+  - "artifact:phase4.selected-slice"
+  - "artifact:phase3.asset-atlas"
 forbidden_inference:
-  - "不得用调用可达性替代实际执行，不得把 UI 行为推断成隐藏服务端实现。"
-  - "断链保持 unknown 或 unsupported，不得用框架常识自动补边。"
-output_records:
-  - record_type: trace-link
-    schema: "guides/product-reverse-engineering/toolkit/schemas/trace-link.schema.json"
-    relative_path: "knowledge/records/trace-link/selected-slice.links.json"
-  - record_type: claim
-    schema: "guides/product-reverse-engineering/toolkit/schemas/claim.schema.json"
-    relative_path: "knowledge/records/claim/selected-slice.claims.json"
-validation_command: "python3 tools/validate_product_reverse_engineering_guide.py"
+  statements:
+    - "不得用调用可达性替代实际执行，也不得把可见 UI 行为推断成隐藏服务端实现。"
+    - "不得用框架常识补齐断边，not-found 不等于 does-not-exist。"
+  required_claim_discipline:
+    preserve_unknowns: true
+    cite_each_claim: true
+    report_unreachable_inputs: true
+    absence_terms: [not-found, does-not-exist]
+  authority_limits:
+    may_approve_gate: false
+    may_change_authorization: false
+    may_run_unapproved_runtime: false
+output_paths_or_record_types:
+  - record_id: "trace-link:trace.declared-edge"
+    record_type: trace-link
+    relative_path: "knowledge/records/trace-link/trace.declared-edge.json"
+    schema_name: trace-link
+    schema_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/trace-link.schema.json"
+  - record_id: "claim:trace.declared-edge"
+    record_type: claim
+    relative_path: "knowledge/records/claim/trace.declared-edge.json"
+    schema_name: claim
+    schema_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/claim.schema.json"
+schema:
+  registry_id: "schema-registry:product-reverse-engineering.v1"
+  tool_checkout_id: "workspace:vendor.codex-playbook"
+  registry_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/"
+  registry_commit: "<fill-before-dispatch>"
+  registry_tree_sha256: "sha256:<fill-before-dispatch>"
+validation_command:
+  canonical_working_directory: "."
+  tool_checkout_identity:
+    checkout_id: "workspace:vendor.codex-playbook"
+    relative_path: "vendor/codex-playbook/"
+    repository_commit: "<fill-before-dispatch>"
+    tree_sha256: "sha256:<fill-before-dispatch>"
+  validator:
+    relative_path: "vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py"
+    version: "<fill-before-dispatch>"
+    repository_commit: "<fill-before-dispatch>"
+    sha256: "sha256:<fill-before-dispatch>"
+  commands:
+    - output_record_id: "trace-link:trace.declared-edge"
+      command: "python3 vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py --schema trace-link knowledge/records/trace-link/trace.declared-edge.json"
+      expected_exit_code: 0
+    - output_record_id: "claim:trace.declared-edge"
+      command: "python3 vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py --schema claim knowledge/records/claim/trace.declared-edge.json"
+      expected_exit_code: 0
 stop_conditions:
   - condition: authorization-drift
     action: "stop-and-request-new-authorization"
@@ -126,67 +260,122 @@ stop_conditions:
   - condition: unsafe-or-unapproved-runtime
     action: "stop-and-escalate-to-safety-owner"
 human_review_owner: "技术分析负责人"
-agent_rules:
-  preserve_unknowns: true
-  cite_each_claim: true
-  report_unreachable_inputs: true
-  absence_terms:
-    - not-found
-    - does-not-exist
-  may_approve_gate: false
-  may_change_authorization: false
-  may_run_unapproved_runtime: false
 ```
-
-输出必须逐边给出 source、target、relation、上下文和 evidence ID。候选边与已支持边分开；找不到消费者时报告已搜索的 topic、group、配置和版本，而非宣称没有消费者。
 
 ## runtime-experiment-review
 
-用途：复核已执行实验的协议绑定、首错、结果、副作用和清理；本任务不执行或重放实验。
+用途：只读复核一个已执行实验的三件套；本任务不执行、重放或修改实验。
 
 ```yaml
 packet_type: runtime-experiment-review
-objective: "审计现有 ART-P5-PROTOCOL、RESULT 与 EFFECTS 是否同一身份、忠实记录实际结果并满足安全和复现契约。"
+objective: "审计一个已声明实验的协议、结果与效应是否身份一致并满足首错、清理和复现契约，输出单对象实验复核记录。"
 authorization_identity:
-  record_id: "decision:phase0.authorization"
-  record_hash: "sha256:<fill-before-dispatch>"
-  gate_record_id: "gate:phase0.g0-authorization"
-  gate_record_hash: "sha256:<fill-before-dispatch>"
+  authorization_record_id: "decision:phase0.authorization"
+  authorization_record_hash: "sha256:<fill-before-dispatch>"
+  authorization_record_version: "<fill-before-dispatch>"
+  current_g0:
+    gate_record_id: "gate:phase0.g0-authorization"
+    gate_record_hash: "sha256:<fill-before-dispatch>"
+    verdict: pass
+input_identity:
+  manifest_id: "manifest:runtime-review.inputs-v1"
+  manifest_sha256: "sha256:<fill-before-dispatch>"
+  entries:
+    - input_id: "experiment:phase5.protocol"
+      relative_path: "knowledge/runtime/protocols/phase5.protocol.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: experiment-protocol
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, parse, compare, validate]
+    - input_id: "experiment:phase5.result"
+      relative_path: "knowledge/runtime/results/phase5.result.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: experiment-result
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, parse, compare, validate]
+    - input_id: "experiment:phase5.effects"
+      relative_path: "knowledge/runtime/effects/phase5.effects.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: experiment-effects
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, parse, compare, validate]
 workspace_identity:
   workspace_root_id: "workspace:target.reverse-engineering"
-  repository_commit: "<fill-before-dispatch>"
-  product_version: "<fill-before-dispatch>"
-  source_fingerprint: "sha256:<fill-before-dispatch>"
-  artifact_fingerprint: "sha256:<fill-before-dispatch>"
-  environment_identity: "environment:runtime.authorized-clone"
-exact_inputs:
-  - input_id: "experiment:phase5.protocol"
-    relative_path: "knowledge/runtime/protocols/phase5.protocol.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-  - input_id: "experiment:phase5.result"
-    relative_path: "knowledge/runtime/results/phase5.result.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-  - input_id: "experiment:phase5.effects"
-    relative_path: "knowledge/runtime/effects/phase5.effects.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-scope_denominator:
-  - "逐个协议步骤、预期观察面、实际 run、首错、副作用、清理步骤、残留检查和目标主张计数。"
+  repository_or_worktree_version: "<fill-before-dispatch>"
+  canonical_working_directory: "."
+  configuration_identity: "configuration:target.runtime-review"
+  role_identity: "role:qa.experiment-reviewer"
+  environment_identity: "environment:target.authorized-clone"
+  time_window:
+    from: "<fill-before-dispatch>"
+    to: "<fill-before-dispatch>"
+    timezone: "<fill-before-dispatch>"
+scope:
+  included: ["denominator:runtime-review.declared-experiment"]
+  excluded: ["scope:runtime-review.new-execution"]
+  versions: ["<fill-before-dispatch>"]
+  roles: ["role:qa.experiment-reviewer"]
+  product_surfaces: ["surface:runtime-review.declared-scenario"]
+  assets: ["asset:runtime-review.protocol-result-effects"]
+  data: ["data:runtime-review.redacted-observations"]
+  integrations: ["integration:runtime-review.no-live-access"]
+  nonfunctional: ["nonfunctional:runtime-review.read-only"]
+denominator:
+  - item_id: "denominator:runtime-review.declared-experiment"
+    parent_id: null
+    priority: P0
+    target_status: must-be-reviewed
+    calculation_rule:
+      denominator_units: 1
+      achieved_when: "单对象 experiment 输出通过 schema，三项输入哈希闭合，首错、副作用、清理、残留和复现均有明确结果或未知。"
 allowed_evidence:
-  - "只读冻结协议、已有运行结果、效应记录及其脱敏证据索引；禁止发起新的请求、查询、写入或重放。"
+  - "experiment:phase5.protocol"
+  - "experiment:phase5.result"
+  - "experiment:phase5.effects"
 forbidden_inference:
-  - "不得把计划步骤当作已执行，不得用成功重试覆盖首错，不得从清理命令存在推断清理成功。"
-  - "不得把一次运行或不同环境的结果泛化到未测版本、角色和状态。"
-output_records:
-  - record_type: experiment
-    schema: "guides/product-reverse-engineering/toolkit/schemas/experiment.schema.json"
-    relative_path: "knowledge/records/experiment/phase5.review.json"
-  - record_type: claim
-    schema: "guides/product-reverse-engineering/toolkit/schemas/claim.schema.json"
-    relative_path: "knowledge/records/claim/phase5.review-claims.json"
-validation_command: "python3 tools/validate_product_reverse_engineering_guide.py"
+  statements:
+    - "不得把计划步骤当作已执行，不得用成功重试覆盖首错，不得从清理命令存在推断清理成功。"
+    - "不得把一次运行泛化到未测版本、角色或环境，也不得发起任何新运行。"
+  required_claim_discipline:
+    preserve_unknowns: true
+    cite_each_claim: true
+    report_unreachable_inputs: true
+    absence_terms: [not-found, does-not-exist]
+  authority_limits:
+    may_approve_gate: false
+    may_change_authorization: false
+    may_run_unapproved_runtime: false
+output_paths_or_record_types:
+  - record_id: "experiment:runtime-review.declared-experiment"
+    record_type: experiment
+    relative_path: "knowledge/records/experiment/runtime-review.declared-experiment.json"
+    schema_name: experiment
+    schema_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/experiment.schema.json"
+schema:
+  registry_id: "schema-registry:product-reverse-engineering.v1"
+  tool_checkout_id: "workspace:vendor.codex-playbook"
+  registry_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/"
+  registry_commit: "<fill-before-dispatch>"
+  registry_tree_sha256: "sha256:<fill-before-dispatch>"
+validation_command:
+  canonical_working_directory: "."
+  tool_checkout_identity:
+    checkout_id: "workspace:vendor.codex-playbook"
+    relative_path: "vendor/codex-playbook/"
+    repository_commit: "<fill-before-dispatch>"
+    tree_sha256: "sha256:<fill-before-dispatch>"
+  validator:
+    relative_path: "vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py"
+    version: "<fill-before-dispatch>"
+    repository_commit: "<fill-before-dispatch>"
+    sha256: "sha256:<fill-before-dispatch>"
+  commands:
+    - output_record_id: "experiment:runtime-review.declared-experiment"
+      command: "python3 vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py --schema experiment knowledge/records/experiment/runtime-review.declared-experiment.json"
+      expected_exit_code: 0
 stop_conditions:
   - condition: authorization-drift
     action: "stop-and-request-new-authorization"
@@ -197,63 +386,122 @@ stop_conditions:
   - condition: unsafe-or-unapproved-runtime
     action: "stop-and-escalate-to-safety-owner"
 human_review_owner: "QA/实验负责人"
-agent_rules:
-  preserve_unknowns: true
-  cite_each_claim: true
-  report_unreachable_inputs: true
-  absence_terms:
-    - not-found
-    - does-not-exist
-  may_approve_gate: false
-  may_change_authorization: false
-  may_run_unapproved_runtime: false
 ```
-
-Agent 只能报告 G5 输入是否满足规则，不能把报告写成 `pass` 批准。协议与结果身份不一致、首错丢失、未清理效应或原始证据不可到达时立即停止审计结论并交给评审人。
 
 ## conflict-audit
 
-用途：找出同一边界内互相支持、反驳或版本错配的主张，保留竞争解释并准备人类裁决材料。
+用途：核对一个 P0/P1 主张的竞争证据并生成单对象 conflicting claim 与单对象覆盖审计记录；人类决定仍由决定分区唯一拥有。
 
 ```yaml
 packet_type: conflict-audit
-objective: "审计 P0/P1 与抽样 P2 主张的证据冲突、版本混用和边界混用，生成不替代人工决定的冲突候选。"
+objective: "审计一个声明主张的证据冲突、版本或上下文混用，保留竞争解释并输出单对象冲突主张和覆盖记录。"
 authorization_identity:
-  record_id: "decision:phase0.authorization"
-  record_hash: "sha256:<fill-before-dispatch>"
-  gate_record_id: "gate:phase0.g0-authorization"
-  gate_record_hash: "sha256:<fill-before-dispatch>"
+  authorization_record_id: "decision:phase0.authorization"
+  authorization_record_hash: "sha256:<fill-before-dispatch>"
+  authorization_record_version: "<fill-before-dispatch>"
+  current_g0:
+    gate_record_id: "gate:phase0.g0-authorization"
+    gate_record_hash: "sha256:<fill-before-dispatch>"
+    verdict: pass
+input_identity:
+  manifest_id: "manifest:conflict-audit.inputs-v1"
+  manifest_sha256: "sha256:<fill-before-dispatch>"
+  entries:
+    - input_id: "claim:phase7.audit-target"
+      relative_path: "knowledge/records/claim/phase7.audit-target.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: claim-record
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, parse, compare, validate]
+    - input_id: "evidence:phase7.audit-target-index"
+      relative_path: "knowledge/evidence/indexes/phase7.audit-target-index.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: redacted-evidence-index
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, parse, compare]
 workspace_identity:
   workspace_root_id: "workspace:target.reverse-engineering"
-  repository_commit: "<fill-before-dispatch>"
-  product_version: "<fill-before-dispatch>"
-  source_fingerprint: "sha256:<fill-before-dispatch>"
-  artifact_fingerprint: "sha256:<fill-before-dispatch>"
-  environment_identity: "environment:audit.frozen-records"
-exact_inputs:
-  - input_id: "artifact:phase7.claim-set"
-    relative_path: "knowledge/records/claim/phase7.scope.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-  - input_id: "artifact:phase7.evidence-index"
-    relative_path: "knowledge/evidence/indexes/phase7.scope.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-scope_denominator:
-  - "全部 P0/P1 主张和分母明确指定的 P2 样本；按 claim ID、版本、角色、环境和时间窗分别计数。"
+  repository_or_worktree_version: "<fill-before-dispatch>"
+  canonical_working_directory: "."
+  configuration_identity: "configuration:target.conflict-audit"
+  role_identity: "role:lead.conflict-reviewer"
+  environment_identity: "environment:target.frozen-records"
+  time_window:
+    from: "<fill-before-dispatch>"
+    to: "<fill-before-dispatch>"
+    timezone: "<fill-before-dispatch>"
+scope:
+  included: ["denominator:conflict-audit.target-claim"]
+  excluded: ["scope:conflict-audit.other-claims"]
+  versions: ["<fill-before-dispatch>"]
+  roles: ["role:lead.conflict-reviewer"]
+  product_surfaces: ["surface:conflict-audit.declared-context"]
+  assets: ["asset:conflict-audit.declared-claim"]
+  data: ["data:conflict-audit.redacted-index"]
+  integrations: ["integration:conflict-audit.none-authorized"]
+  nonfunctional: ["nonfunctional:conflict-audit.preserve-history"]
+denominator:
+  - item_id: "denominator:conflict-audit.target-claim"
+    parent_id: null
+    priority: P0
+    target_status: must-be-reviewed
+    calculation_rule:
+      denominator_units: 1
+      achieved_when: "单对象 claim 与 coverage-summary 输出均通过 schema，双方证据、版本、上下文和需人类决定事项均保留。"
 allowed_evidence:
-  - "只读主张、证据、trace link、决定和覆盖记录；允许按内容哈希核对 Git 外证据是否可由保管人访问。"
+  - "claim:phase7.audit-target"
+  - "evidence:phase7.audit-target-index"
 forbidden_inference:
-  - "不得按票数、时间新旧或来源权威感自动选择赢家，不得删除少数证据。"
-  - "不得把不同版本、角色或环境的差异压成一个冲突，也不得自行接受风险。"
-output_records:
-  - record_type: claim
-    schema: "guides/product-reverse-engineering/toolkit/schemas/claim.schema.json"
-    relative_path: "knowledge/records/claim/phase7.conflicting.json"
-  - record_type: coverage-summary
-    schema: "guides/product-reverse-engineering/toolkit/schemas/coverage-summary.schema.json"
-    relative_path: "knowledge/coverage/phase7.conflict-audit.json"
-validation_command: "python3 tools/validate_product_reverse_engineering_guide.py"
+  statements:
+    - "不得按票数、时间新旧或来源权威感自动选择赢家，也不得删除少数证据。"
+    - "不得把不同版本、角色或环境的差异压成一个冲突，不得自行接受风险。"
+  required_claim_discipline:
+    preserve_unknowns: true
+    cite_each_claim: true
+    report_unreachable_inputs: true
+    absence_terms: [not-found, does-not-exist]
+  authority_limits:
+    may_approve_gate: false
+    may_change_authorization: false
+    may_run_unapproved_runtime: false
+output_paths_or_record_types:
+  - record_id: "claim:conflict-audit.target-claim"
+    record_type: claim
+    relative_path: "knowledge/records/claim/conflict-audit.target-claim.json"
+    schema_name: claim
+    schema_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/claim.schema.json"
+  - record_id: "coverage-summary:conflict-audit.target-claim"
+    record_type: coverage-summary
+    relative_path: "knowledge/coverage/conflict-audit.target-claim.json"
+    schema_name: coverage-summary
+    schema_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/coverage-summary.schema.json"
+schema:
+  registry_id: "schema-registry:product-reverse-engineering.v1"
+  tool_checkout_id: "workspace:vendor.codex-playbook"
+  registry_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/"
+  registry_commit: "<fill-before-dispatch>"
+  registry_tree_sha256: "sha256:<fill-before-dispatch>"
+validation_command:
+  canonical_working_directory: "."
+  tool_checkout_identity:
+    checkout_id: "workspace:vendor.codex-playbook"
+    relative_path: "vendor/codex-playbook/"
+    repository_commit: "<fill-before-dispatch>"
+    tree_sha256: "sha256:<fill-before-dispatch>"
+  validator:
+    relative_path: "vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py"
+    version: "<fill-before-dispatch>"
+    repository_commit: "<fill-before-dispatch>"
+    sha256: "sha256:<fill-before-dispatch>"
+  commands:
+    - output_record_id: "claim:conflict-audit.target-claim"
+      command: "python3 vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py --schema claim knowledge/records/claim/conflict-audit.target-claim.json"
+      expected_exit_code: 0
+    - output_record_id: "coverage-summary:conflict-audit.target-claim"
+      command: "python3 vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py --schema coverage-summary knowledge/coverage/conflict-audit.target-claim.json"
+      expected_exit_code: 0
 stop_conditions:
   - condition: authorization-drift
     action: "stop-and-request-new-authorization"
@@ -264,64 +512,124 @@ stop_conditions:
   - condition: unsafe-or-unapproved-runtime
     action: "stop-and-escalate-to-safety-owner"
 human_review_owner: "逆向负责人和相应领域负责人"
-agent_rules:
-  preserve_unknowns: true
-  cite_each_claim: true
-  report_unreachable_inputs: true
-  absence_terms:
-    - not-found
-    - does-not-exist
-  may_approve_gate: false
-  may_change_authorization: false
-  may_run_unapproved_runtime: false
 ```
 
 审计输出只在 claim/coverage 记录中列出“需要谁决定什么”，不得写入 `knowledge/decisions/`。有权限的人类复核后另建决定记录；Agent 不能模仿签名、选择最终结果或生成风险接受。
 
 ## freeze-audit
 
-用途：在发布前核对分母、门禁输入、批准、确定性生成和分离式冻结顺序，不创建批准。
+用途：核对一个声明冻结输出的分母、门禁输入、批准、确定性生成和无环顺序；Agent 只写单对象覆盖审计记录。
 
 ```yaml
 packet_type: freeze-audit
-objective: "验证声明输出是否由固定权威输入无环、确定性重建，所有阻断项和人工批准是否真实可寻址。"
+objective: "验证一个声明冻结输出是否由固定权威输入无环、确定性重建，并核对其阻断项和人工批准引用。"
 authorization_identity:
-  record_id: "decision:phase0.authorization"
-  record_hash: "sha256:<fill-before-dispatch>"
-  gate_record_id: "gate:phase0.g0-authorization"
-  gate_record_hash: "sha256:<fill-before-dispatch>"
+  authorization_record_id: "decision:phase0.authorization"
+  authorization_record_hash: "sha256:<fill-before-dispatch>"
+  authorization_record_version: "<fill-before-dispatch>"
+  current_g0:
+    gate_record_id: "gate:phase0.g0-authorization"
+    gate_record_hash: "sha256:<fill-before-dispatch>"
+    verdict: pass
+input_identity:
+  manifest_id: "manifest:freeze-audit.inputs-v1"
+  manifest_sha256: "sha256:<fill-before-dispatch>"
+  entries:
+    - input_id: "coverage-summary:phase8.root-summary"
+      relative_path: "knowledge/coverage/phase8.root-summary.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: root-summary-record
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, parse, compare, validate]
+    - input_id: "decision:phase8.release-approval"
+      relative_path: "knowledge/decisions/phase8.release-approval.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: human-signed-decision
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, parse, compare, validate]
+    - input_id: "artifact:phase8.generated-output"
+      relative_path: "knowledge/generated/phase8.declared-output.json"
+      sha256: "sha256:<fill-before-dispatch>"
+      input_type: generated-output
+      version: "<fill-before-dispatch>"
+      availability: required
+      allowed_actions: [read, hash, compare]
 workspace_identity:
   workspace_root_id: "workspace:target.reverse-engineering"
-  repository_commit: "<fill-before-dispatch>"
-  product_version: "<fill-before-dispatch>"
-  source_fingerprint: "sha256:<fill-before-dispatch>"
-  artifact_fingerprint: "sha256:<fill-before-dispatch>"
-  environment_identity: "environment:freeze.frozen-inputs"
-exact_inputs:
-  - input_id: "artifact:phase8.root-summary"
-    relative_path: "knowledge/coverage/phase8.root-summary.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-  - input_id: "decision:phase8.release-approval"
-    relative_path: "knowledge/decisions/phase8.release-approval.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-  - input_id: "artifact:phase8.generated-manifest"
-    relative_path: "knowledge/generated/phase8.output-manifest.json"
-    sha256: "sha256:<fill-before-dispatch>"
-    availability: required
-scope_denominator:
-  - "全部 P0/P1、声明输出、G0–G7 判定、已接受未知、根摘要输入和冻结 allow-list；不得抽样。"
+  repository_or_worktree_version: "<fill-before-dispatch>"
+  canonical_working_directory: "."
+  configuration_identity: "configuration:target.freeze-audit"
+  role_identity: "role:release.freeze-reviewer"
+  environment_identity: "environment:target.frozen-inputs"
+  time_window:
+    from: "<fill-before-dispatch>"
+    to: "<fill-before-dispatch>"
+    timezone: "<fill-before-dispatch>"
+scope:
+  included: ["denominator:freeze-audit.declared-output"]
+  excluded: ["scope:freeze-audit.other-outputs"]
+  versions: ["<fill-before-dispatch>"]
+  roles: ["role:release.freeze-reviewer"]
+  product_surfaces: ["surface:freeze-audit.declared-release"]
+  assets: ["asset:freeze-audit.declared-output"]
+  data: ["data:freeze-audit.hashes-only"]
+  integrations: ["integration:freeze-audit.integrity-anchor"]
+  nonfunctional: ["nonfunctional:freeze-audit.deterministic-rebuild"]
+denominator:
+  - item_id: "denominator:freeze-audit.declared-output"
+    parent_id: null
+    priority: P0
+    target_status: must-be-supported
+    calculation_rule:
+      denominator_units: 1
+      achieved_when: "单对象 coverage-summary 输出通过 schema，输入 allow-list、G0-G7、人工批准、根摘要和声明输出哈希全部可寻址且无环。"
 allowed_evidence:
-  - "只读已提交 canonical 记录、签署决定、生成清单和内容哈希；只运行声明的无副作用验证/重建命令。"
+  - "coverage-summary:phase8.root-summary"
+  - "decision:phase8.release-approval"
+  - "artifact:phase8.generated-output"
 forbidden_inference:
-  - "不得因 schema 通过就推断产品主张为真，不得把 Agent 输出当成人类批准。"
-  - "不得忽略不可到达输入、P0 冲突、非确定性差异或根摘要自引用。"
-output_records:
-  - record_type: coverage-summary
-    schema: "guides/product-reverse-engineering/toolkit/schemas/coverage-summary.schema.json"
-    relative_path: "knowledge/coverage/phase8.freeze-audit.json"
-validation_command: "python3 tools/validate_product_reverse_engineering_guide.py"
+  statements:
+    - "不得因 schema 通过就推断产品主张为真，不得把 Agent 输出当成人类批准。"
+    - "不得忽略不可到达输入、P0 冲突、非确定性差异或根摘要自引用。"
+  required_claim_discipline:
+    preserve_unknowns: true
+    cite_each_claim: true
+    report_unreachable_inputs: true
+    absence_terms: [not-found, does-not-exist]
+  authority_limits:
+    may_approve_gate: false
+    may_change_authorization: false
+    may_run_unapproved_runtime: false
+output_paths_or_record_types:
+  - record_id: "coverage-summary:freeze-audit.declared-output"
+    record_type: coverage-summary
+    relative_path: "knowledge/coverage/freeze-audit.declared-output.json"
+    schema_name: coverage-summary
+    schema_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/coverage-summary.schema.json"
+schema:
+  registry_id: "schema-registry:product-reverse-engineering.v1"
+  tool_checkout_id: "workspace:vendor.codex-playbook"
+  registry_relative_path: "vendor/codex-playbook/guides/product-reverse-engineering/toolkit/schemas/"
+  registry_commit: "<fill-before-dispatch>"
+  registry_tree_sha256: "sha256:<fill-before-dispatch>"
+validation_command:
+  canonical_working_directory: "."
+  tool_checkout_identity:
+    checkout_id: "workspace:vendor.codex-playbook"
+    relative_path: "vendor/codex-playbook/"
+    repository_commit: "<fill-before-dispatch>"
+    tree_sha256: "sha256:<fill-before-dispatch>"
+  validator:
+    relative_path: "vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py"
+    version: "<fill-before-dispatch>"
+    repository_commit: "<fill-before-dispatch>"
+    sha256: "sha256:<fill-before-dispatch>"
+  commands:
+    - output_record_id: "coverage-summary:freeze-audit.declared-output"
+      command: "python3 vendor/codex-playbook/tools/validate_product_reverse_engineering_guide.py --schema coverage-summary knowledge/coverage/freeze-audit.declared-output.json"
+      expected_exit_code: 0
 stop_conditions:
   - condition: authorization-drift
     action: "stop-and-request-new-authorization"
@@ -332,22 +640,12 @@ stop_conditions:
   - condition: unsafe-or-unapproved-runtime
     action: "stop-and-escalate-to-safety-owner"
 human_review_owner: "发布责任人与目的决策人"
-agent_rules:
-  preserve_unknowns: true
-  cite_each_claim: true
-  report_unreachable_inputs: true
-  absence_terms:
-    - not-found
-    - does-not-exist
-  may_approve_gate: false
-  may_change_authorization: false
-  may_run_unapproved_runtime: false
 ```
 
-Agent 输出的只有冻结审计记录；需要决定的事项作为阻断项交给 `human_review_owner`，不得写入 `knowledge/decisions/`。最终 `ART-P8-APPROVAL`、G7 判定和分离式冻结证明必须由既定人类/确定性流程按[覆盖、质量与冻结](../core/coverage-quality-and-freeze.md)生成；Agent 无权自批 Gate 或改写输入来使验证通过。
+Agent 输出的只有冻结审计记录；需要决定的事项作为阻断项交给 `human_review_owner`，不得写入 `knowledge/decisions/`。最终 `ART-P8-APPROVAL`、G7 判定和分离式冻结证明必须由既定人类/确定性流程按[覆盖、质量与冻结](../core/coverage-quality-and-freeze.md)生成。
 
 ## 通用交付格式
 
-每次执行先回显 packet ID、授权/工作区身份、输入哈希和停止条件，再报告：已完成分母、未知、`not-found`、不可到达输入、证据冲突、输出路径、验证结果与需人类决定事项。任何 claim 都必须逐条引用 evidence ID；汇总段落不能成为新的无证据 claim。
+执行前回显 `packet_type`、十三项核心字段、授权/G0 身份、workspace/cwd、输入 manifest 哈希、输出 manifest 和停止条件。若任一 required 输入不可到达、哈希不符、路径越界或工具 checkout 无法解析，应停止并报告该 input ID，不得搜索替代输入。
 
-验证失败时保留原始失败输出并停止接受流程。修复只发生在拥有写权限的 canonical 分区，生成投影必须重新构建；具体写入边界见[项目证据仓布局](project-layout.md)。
+执行后逐分母项报告状态，逐 claim 引用 evidence ID，并单列未知、`not-found`、不可到达输入、冲突、输出文件及每条精确验证命令的退出码。不得动态增加输出记录；新对象交由 `human_review_owner` 决定是否创建新版任务包。
