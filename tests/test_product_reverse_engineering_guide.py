@@ -306,6 +306,24 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         }
         self.assertTrue(expected_keys.issubset(observed_keys))
 
+    def yaml_nested_list_item_keys(self, metadata, list_key):
+        match = re.search(
+            rf"(?ms)^{re.escape(list_key)}:\n((?:[ \t].*(?:\n|$))*)",
+            metadata,
+        )
+        self.assertIsNotNone(match, f"missing YAML list: {list_key}")
+        nested_lines = match.group(1)
+        self.assertRegex(nested_lines, r"(?m)^  - [a-z][a-z0-9_]*:")
+        return {
+            item.group(1)
+            for line in nested_lines.splitlines()
+            if (
+                item := re.fullmatch(
+                    r"\s+(?:- )?([a-z][a-z0-9_]*):(?: .*)?", line
+                )
+            )
+        }
+
     def assert_guided_sections(self, document, headings):
         for heading in headings:
             with self.subTest(heading=heading):
@@ -1534,12 +1552,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "owner",
             "validation_method",
             "last_updated",
-            "method_maturity",
         }
-        separation_contract = (
-            "方法成熟度只评价取证、建模或验证方法及其证据基础，不评价目标产品事实；"
-            "产品主张必须另用 `status`、`confidence` 和 `evidence_references`。"
-        )
         for name in TEMPLATE_DOCUMENTS:
             if name == "project-charter":
                 continue
@@ -1547,14 +1560,50 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 document = self.read_template_document(name)
                 metadata = self.yaml_metadata_block(document)
                 self.assert_yaml_top_level_keys(metadata, required_keys)
+                self.assertNotRegex(metadata, r"(?m)^method_maturity:")
+                method_keys = self.yaml_nested_list_item_keys(
+                    metadata, "evidence_method_entries"
+                )
+                self.assertTrue(
+                    {"evidence_id", "method_id", "method_maturity"}.issubset(
+                        method_keys
+                    )
+                )
                 self.assertRegex(
                     metadata,
-                    r"(?m)^method_maturity: "
+                    r"(?m)^    method_maturity: "
                     r'"(cross-project-validated|project-validated|industry-established|proposed)"$',
                 )
-                self.assertIn(separation_contract, document)
                 self.assertNotRegex(document, r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
                 self.assertNotIn("/Users/", document)
+
+    def test_composite_templates_use_record_status_and_atomic_claim_entries(self):
+        self.require_all_templates()
+        composite_templates = set(TEMPLATE_DOCUMENTS) - {
+            "project-charter",
+            "claim-evidence-record",
+        }
+        for name in sorted(composite_templates):
+            with self.subTest(template=name):
+                metadata = self.yaml_metadata_block(
+                    self.read_template_document(name)
+                )
+                self.assertRegex(
+                    metadata,
+                    r'(?m)^status: "REPLACE_WITH_RECORD_STATUS"$',
+                )
+                claim_keys = self.yaml_nested_list_item_keys(
+                    metadata, "atomic_claims"
+                )
+                self.assertTrue(
+                    {
+                        "claim_id",
+                        "statement",
+                        "status",
+                        "confidence",
+                        "evidence_references",
+                    }.issubset(claim_keys)
+                )
 
     def test_project_charter_fixes_authorization_and_delivery_boundaries(self):
         self.require_all_templates()
@@ -1727,6 +1776,23 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.assertIn(contract, experiment)
 
         claim = self.read_template_document("claim-evidence-record")
+        claim_metadata = self.yaml_metadata_block(claim)
+        self.assertRegex(
+            claim_metadata,
+            r'(?m)^status: "REPLACE_WITH_RECORD_STATUS"$',
+        )
+        self.assert_yaml_top_level_keys(
+            claim_metadata,
+            {
+                "claim_id",
+                "claim_statement",
+                "claim_status",
+                "confidence",
+                "supporting_evidence_references",
+                "contradicting_evidence_references",
+                "evidence_method_entries",
+            },
+        )
         self.assertIn("一个证据项不等于一条产品主张", claim)
         self.assertIn("支持和反驳证据必须分列", claim)
         self.assertNotIn("claim_maturity", claim)
@@ -1748,6 +1814,30 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "不得递归包含自身哈希",
         ):
             self.assertIn(contract, freeze)
+        coverage_dimensions = (
+            "structure",
+            "product",
+            "semantic",
+            "runtime",
+            "data",
+            "permission",
+            "integration",
+            "non-functional",
+            "trace",
+        )
+        dimension_rows = [
+            match.group(1)
+            for line in freeze.splitlines()
+            if (
+                match := re.fullmatch(
+                    r"\| (structure|product|semantic|runtime|data|permission|"
+                    r"integration|non-functional|trace) \| [^|]+ \| [^|]+ \| "
+                    r"[^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \|",
+                    line,
+                )
+            )
+        ]
+        self.assertEqual(list(coverage_dimensions), dimension_rows)
 
     def test_required_entry_files_exist(self):
         for path in REQUIRED_ENTRY_FILES:

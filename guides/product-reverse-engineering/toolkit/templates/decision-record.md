@@ -4,12 +4,21 @@
 record_id: "REPLACE_WITH_QUALIFIED_DECISION_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"
 scope_or_module: "REPLACE_WITH_QUALIFIED_SCOPE_OR_MODULE_ID"
-status: "REPLACE_WITH_DECISION_LIFECYCLE_STATUS"
+status: "REPLACE_WITH_RECORD_STATUS"
 evidence_references: []
 owner: "REPLACE_WITH_AUTHORIZED_HUMAN_DECISION_OWNER"
 validation_method: "REPLACE_WITH_DECISION_INPUT_REVIEW_METHOD"
 last_updated: "YYYY-MM-DD"
-method_maturity: "proposed"
+atomic_claims:
+  - claim_id: "REPLACE_WITH_QUALIFIED_CLAIM_ID"
+    statement: "REPLACE_WITH_ONE_PRECISE_FACT_USED_BY_THE_DECISION"
+    status: "REPLACE_WITH_CLAIM_STATUS"
+    confidence: "REPLACE_WITH_LOW_MEDIUM_OR_HIGH"
+    evidence_references: []
+evidence_method_entries:
+  - evidence_id: "REPLACE_WITH_QUALIFIED_EVIDENCE_ID"
+    method_id: "REPLACE_WITH_QUALIFIED_METHOD_ID"
+    method_maturity: "proposed"
 question: "REPLACE_WITH_PRECISE_DECISION_QUESTION"
 alternatives: []
 chosen_outcome: "REPLACE_WITH_CHOSEN_ALTERNATIVE"
@@ -18,6 +27,8 @@ supersedes_decision_id: "REPLACE_WITH_PRIOR_DECISION_ID_OR_EXPLICIT_NONE"
 ```
 
 方法成熟度只评价取证、建模或验证方法及其证据基础，不评价目标产品事实；产品主张必须另用 `status`、`confidence` 和 `evidence_references`。
+
+顶层 `status` 是本记录的生命周期状态；产品事实只写入 `atomic_claims`。`evidence_method_entries[].method_maturity` 只评价对应 `method_id`，不得提升关联主张。
 
 ## 待决问题与权限
 

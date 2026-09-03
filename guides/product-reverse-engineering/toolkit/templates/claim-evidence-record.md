@@ -1,23 +1,28 @@
 # 主张与证据关联记录模板
 
 ```yaml
-record_id: "REPLACE_WITH_QUALIFIED_CLAIM_ID"
+record_id: "REPLACE_WITH_QUALIFIED_CLAIM_EVIDENCE_ASSOCIATION_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"
 scope_or_module: "REPLACE_WITH_QUALIFIED_SCOPE_OR_MODULE_ID"
-status: "REPLACE_WITH_CLAIM_STATUS"
+status: "REPLACE_WITH_RECORD_STATUS"
 evidence_references: []
 owner: "REPLACE_WITH_NAMED_HUMAN_OWNER"
 validation_method: "REPLACE_WITH_CLAIM_VALIDATION_METHOD"
 last_updated: "YYYY-MM-DD"
-method_maturity: "proposed"
-atomic_statement: "REPLACE_WITH_ONE_PRECISE_FALSIFIABLE_PRODUCT_STATEMENT"
+claim_id: "REPLACE_WITH_QUALIFIED_CLAIM_ID"
+claim_statement: "REPLACE_WITH_ONE_PRECISE_FALSIFIABLE_PRODUCT_STATEMENT"
+claim_status: "REPLACE_WITH_CLAIM_STATUS"
 confidence: "REPLACE_WITH_LOW_MEDIUM_OR_HIGH"
 confidence_rationale: "REPLACE_WITH_BOUNDARY_SPECIFIC_RATIONALE"
 supporting_evidence_references: []
 contradicting_evidence_references: []
+evidence_method_entries:
+  - evidence_id: "REPLACE_WITH_QUALIFIED_EVIDENCE_ID"
+    method_id: "REPLACE_WITH_QUALIFIED_METHOD_ID"
+    method_maturity: "proposed"
 ```
 
-方法成熟度只评价取证、建模或验证方法及其证据基础，不评价目标产品事实；产品主张必须另用 `status`、`confidence` 和 `evidence_references`。
+顶层 `status` 是主张—证据关联记录的生命周期状态；产品事实使用独立的 `claim_id`、`claim_status`、`confidence` 与支持/反驳证据引用。`evidence_method_entries[].method_maturity` 只评价对应 `method_id`，不评价整条产品主张。
 
 一个证据项不等于一条产品主张。支持和反驳证据必须分列，并用类型化链接连接；不要把来源描述、事实陈述、解释和方法成熟度压成一个字段。
 
@@ -28,7 +33,7 @@ contradicting_evidence_references: []
 
 ## 主张状态与置信度
 
-- `status` 只使用 observed、statically-supported、runtime-confirmed、domain-confirmed、inferred、conflicting、unsupported、deprecated 或 superseded。
+- `claim_status` 只使用 observed、statically-supported、runtime-confirmed、domain-confirmed、inferred、conflicting、unsupported、deprecated 或 superseded。
 - `confidence` 独立使用 low、medium 或 high，并说明来源独立性、版本稳定性、反证覆盖与限制。
 
 ## 支持与反驳证据
