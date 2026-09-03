@@ -3994,6 +3994,22 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "2001:db8::25 are synthetic."
             ),
             "note": "A normal synthetic observation without credentials.",
+            "code_symbol": "com.example.order.OrderHandler.execute",
+            "type_name": "System.Collections.Generic.List",
+            "assembly_version": "1.2.3.4",
+            "config_filename": "config.json",
+            "response_filename": "order-response.json",
+            "authorization": {
+                "verdict": "approved",
+                "reference": "artifact:sample.authorization",
+            },
+            "authorization_status": "approved",
+            "customer_status": "active",
+            "customer": {"status": "active", "role": "buyer"},
+            "ordinary_observation": (
+                "The callback reached api.customer.example.com and peer "
+                "203.0.114.8 while parsing a synthetic log line."
+            ),
         }
         self.assertEqual([], fixture_safety_errors(safe_values))
 
@@ -4014,15 +4030,6 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             },
             "embedded root home path": {
                 "note": "artifact=/root/private/capture.json"
-            },
-            "embedded public domain": {
-                "note": "The callback reached api.customer.example.com during capture."
-            },
-            "embedded non-reserved IPv4": {
-                "note": "The peer address was 203.0.114.8 during capture."
-            },
-            "embedded non-reserved IPv6": {
-                "note": "The peer address was 2001:4860:4860::8888 during capture."
             },
         }
         for label, value in unsafe_values.items():
@@ -4126,7 +4133,82 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertEqual([], fixture_safety_errors(explicitly_fictional_values))
 
         contributing = self.read_repo_file("CONTRIBUTING.md")
-        self.assertIn("身份和业务主体字段必须使用明确的虚构标记", contributing)
+        self.assertIn(
+            "业务主体的 identity/name/id/address/contact 字段", contributing
+        )
+
+    def test_fixture_safety_checks_network_identifiers_only_in_network_contexts(self):
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+        allowed_non_network_values = {
+            "code_symbol": "org.example.product.OrderService.handle",
+            "type_name": "Example.Product.CustomerStatus",
+            "artifact_name": "config.json",
+            "response_name": "order-response.json",
+            "version": "10.20.30.40",
+            "note": "api.customer.example.com is a parser fixture token",
+            "endpoint_reference": "endpoint:sample.create-order",
+            "endpoint": "endpoint:sample.create-order",
+        }
+        self.assertEqual([], fixture_safety_errors(allowed_non_network_values))
+
+        network_bypass_mutations = {
+            "host field": {"host": "api.customer.example.com"},
+            "endpoint field": {"api_endpoint": "api.customer.example.com"},
+            "URL authority in prose": {
+                "note": "callback=https://api.customer.example.com/v1"
+            },
+            "explicit host label": {"note": "host:api.customer.example.com"},
+            "explicit domain label": {
+                "note": "domain=api.customer.example.com"
+            },
+            "server IP": {"server": "203.0.114.8"},
+            "explicit server IPv6 label": {
+                "note": "server:2001:4860:4860::8888"
+            },
+        }
+        for label, mutation in network_bypass_mutations.items():
+            with self.subTest(label=label):
+                self.assertTrue(fixture_safety_errors(mutation))
+
+        contributing = self.read_repo_file("CONTRIBUTING.md")
+        self.assertIn("只在网络语义字段、URL authority", contributing)
+
+    def test_fixture_safety_limits_business_checks_to_identity_fields(self):
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+        non_identity_metadata = {
+            "customer_status": "active",
+            "client_role": "buyer",
+            "company": {"status": "inactive", "role": "supplier"},
+            "tenant": {"status": "provisioned", "role": "sandbox"},
+            "business_rule": "orders require approval",
+            "authorization": {
+                "verdict": "approved",
+                "reference": "artifact:sample.authorization",
+            },
+            "authorization_status": "approved",
+        }
+        self.assertEqual([], fixture_safety_errors(non_identity_metadata))
+
+        identity_and_credential_mutations = {
+            "customer filename": {"artifact_name": "customer.md"},
+            "nested customer name": {"customer": {"name": "Acme Corp"}},
+            "nested client contact": {"client": {"contact": "Jane Doe"}},
+            "company address": {"company_address": "1 Private Road"},
+            "tenant ID": {"tenant_id": "tenant-prod-42"},
+            "authorization Basic scalar": {
+                "authorization": "Basic dXNlcjpwYXNzd29yZA=="
+            },
+            "authorization token scalar": {
+                "authorization": "token=abcdefghijklmnop"
+            },
+        }
+        for label, mutation in identity_and_credential_mutations.items():
+            with self.subTest(label=label):
+                self.assertTrue(fixture_safety_errors(mutation))
 
     def test_development_dependencies_include_the_yaml_parser(self):
         requirements = self.read_repo_file("requirements-dev.txt").splitlines()
