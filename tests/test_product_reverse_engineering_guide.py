@@ -663,7 +663,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "asset:sample.client-handler",
                 "calls",
                 "integration:sample.current-session-endpoint",
-                "runtime-confirmed",
+                "statically-supported",
                 "required",
             ),
             (
@@ -677,6 +677,13 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "integration:sample.current-session-endpoint",
                 "emits",
                 "integration:sample.async-outcome",
+                "inferred",
+                "optional",
+            ),
+            (
+                "integration:sample.async-outcome",
+                "supports",
+                "claim:sample.visible-result",
                 "inferred",
                 "optional",
             ),
@@ -699,6 +706,14 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             trace,
         )
         self.assertIn("可选节点缺失时保留缺口", trace)
+        self.assertIn(
+            "异步结果到可见结果的候选边只有在当前场景确有异步迹象时保留",
+            trace,
+        )
+        self.assertIn(
+            "不能取代可见结果自己的独立观察与运行证据",
+            trace,
+        )
 
     def assert_deterministic_gate_record_schema(self, document):
         gate_records = self.section_text(document, "## 门禁判定记录与 Phase 产物")
@@ -1268,6 +1283,22 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "internal implementation runtime overclaim": document.replace(
                 "`capability:sample.accept-action` | `statically-supported` | `optional` |",
                 "`capability:sample.accept-action` | `runtime-confirmed` | `optional` |",
+            ),
+            "static client endpoint edge upgraded to runtime": document.replace(
+                "`integration:sample.current-session-endpoint` | "
+                "`statically-supported` | `required` |",
+                "`integration:sample.current-session-endpoint` | "
+                "`runtime-confirmed` | `required` |",
+            ),
+            "drops conditional async visible edge": document.replace(
+                "| `trace-link:sample.async-to-visible` | "
+                "`integration:sample.async-outcome` | `supports` | "
+                "`claim:sample.visible-result` | `inferred` | `optional` |\n",
+                "",
+            ),
+            "upgrades conditional async visible edge": document.replace(
+                "`claim:sample.visible-result` | `inferred` | `optional` |",
+                "`claim:sample.visible-result` | `runtime-confirmed` | `required` |",
             ),
         }
         for name, mutation in mutations.items():

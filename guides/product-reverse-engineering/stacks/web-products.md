@@ -183,7 +183,7 @@ WebSocket 记录已获准连接的握手身份、消息方向、消息类型、�
 
 ### 示例类型化链接
 
-每条边也有独立状态和证据引用；`optional` 表示只有证据与授权允许时才纳入，不表示可以猜测节点。
+每条边也有独立状态和证据引用；`optional` 表示只有证据与授权允许时才纳入，不表示可以猜测节点。未执行的 client-handler 到 endpoint 关系只由获准前端源码或制品支持时，最高为 `statically-supported`；当前会话实际出现的请求仍由独立网络证据支持。
 
 | 链接 ID | 来源 ID | 关系 | 目标 ID | 当前状态 | 分支 |
 | --- | --- | --- | --- | --- | --- |
@@ -191,11 +191,14 @@ WebSocket 记录已获准连接的握手身份、消息方向、消息类型、�
 | `trace-link:sample.action-to-handler` | `interaction:sample.user-action` | `calls` | `asset:sample.client-handler` | `statically-supported` | `required` |
 | `trace-link:sample.handler-to-form-state` | `asset:sample.client-handler` | `reads` | `data:sample.client-form-state` | `statically-supported` | `required` |
 | `trace-link:sample.validation-evidence` | `evidence:sample.client-validation` | `validates` | `claim:sample.client-validation` | `runtime-confirmed` | `required` |
-| `trace-link:sample.handler-to-endpoint` | `asset:sample.client-handler` | `calls` | `integration:sample.current-session-endpoint` | `runtime-confirmed` | `required` |
+| `trace-link:sample.handler-to-endpoint` | `asset:sample.client-handler` | `calls` | `integration:sample.current-session-endpoint` | `statically-supported` | `required` |
 | `trace-link:sample.network-evidence` | `evidence:sample.network-contract` | `supports` | `claim:sample.network-contract` | `runtime-confirmed` | `required` |
 | `trace-link:sample.backend-to-capability` | `asset:sample.backend-candidate` | `implements` | `capability:sample.accept-action` | `statically-supported` | `optional` |
 | `trace-link:sample.endpoint-to-async` | `integration:sample.current-session-endpoint` | `emits` | `integration:sample.async-outcome` | `inferred` | `optional` |
+| `trace-link:sample.async-to-visible` | `integration:sample.async-outcome` | `supports` | `claim:sample.visible-result` | `inferred` | `optional` |
 | `trace-link:sample.visible-evidence` | `evidence:sample.visible-result` | `validates` | `claim:sample.visible-result` | `runtime-confirmed` | `required` |
+
+异步结果到可见结果的候选边只有在当前场景确有异步迹象时保留，并始终是 `inferred`、`optional`；它不能取代可见结果自己的独立观察与运行证据。没有异步证据时删除候选关系会创建新版本，但不得删除已经登记的历史记录。
 
 节点和链接均采用 `kind:namespace.qualified-key` 限定 ID，状态只使用核心主张状态，关系只使用 `exposes`、`calls`、`reads`、`supports`、`implements`、`emits` 和 `validates` 等核心类型。后来的后端、日志或异步证据新建节点和边；它可以支持、反驳或取代候选，但不覆盖原会话观察。
 
