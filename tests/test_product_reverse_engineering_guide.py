@@ -104,6 +104,118 @@ OPERATOR_TOOLKIT_DOCUMENTS = {
         "prompts",
     )
 }
+OPERATING_PROFILE_ROOT = GUIDE_ROOT / "operating-profiles"
+OPERATING_PROFILE_DOCUMENTS = {
+    name: OPERATING_PROFILE_ROOT / f"{name}.md"
+    for name in (
+        "one-day-triage",
+        "one-week-assessment",
+        "full-program",
+    )
+}
+OPERATING_PROFILE_DURATIONS = {
+    "one-day-triage": "1 working day",
+    "one-week-assessment": "5 working days",
+    "full-program": "phase-and-risk-driven",
+}
+OPERATING_PROFILE_OUTPUTS = {
+    "one-day-triage": {
+        "artifact:triage.bounded-product-architecture-sketch",
+        "artifact:triage.representative-journey-trace",
+        "artifact:triage.major-unknowns",
+        "artifact:triage.risk-register",
+        "artifact:triage.next-phase-estimate",
+    },
+    "one-week-assessment": {
+        "artifact:assessment.preliminary-denominator",
+        "artifact:assessment.representative-roles-core-journeys",
+        "artifact:assessment.high-risk-vertical-slices",
+        "artifact:assessment.authorized-experiment-ledger",
+        "artifact:assessment.full-program-estimate",
+        "artifact:assessment.unverified-areas",
+    },
+    "full-program": {
+        "artifact:program.wave-plan",
+        "artifact:program.phase-hash-chain",
+        "artifact:program.parent-child-summaries",
+        "artifact:program.review-cadence",
+        "artifact:program.gate-ledger",
+        "artifact:program.delta-ledger",
+        "artifact:program.purpose-delivery",
+        "artifact:program.cluster-split-freeze-ledger",
+    },
+}
+OPERATING_PROFILE_OUTPUT_CONTENT = {
+    "one-day-triage": {
+        "artifact:triage.bounded-product-architecture-sketch": {
+            "bounded-product-surface",
+            "bounded-architecture-shape",
+            "version-scope-evidence-bindings",
+        },
+        "artifact:triage.representative-journey-trace": {
+            "one-risk-ranked-representative-journey",
+            "typed-links-and-evidence",
+            "visible-and-implementation-claim-separation",
+        },
+        "artifact:triage.major-unknowns": {
+            "ranked-open-questions",
+            "missing-evidence",
+            "decision-impact",
+        },
+        "artifact:triage.risk-register": {
+            "authorization-and-safety-risks",
+            "product-and-technical-risks",
+            "owner-and-next-action",
+        },
+        "artifact:triage.next-phase-estimate": {
+            "range-not-point-estimate",
+            "assumptions-and-dependencies",
+            "recommended-profile",
+        },
+    },
+    "one-week-assessment": {
+        "artifact:assessment.preliminary-denominator": {
+            "nine-dimension-preliminary-denominator",
+            "source-and-exclusion-rules",
+            "unknown-units",
+        },
+        "artifact:assessment.representative-roles-core-journeys": {
+            "risk-based-role-sample",
+            "core-journey-sample",
+            "selection-rationale",
+        },
+        "artifact:assessment.high-risk-vertical-slices": {
+            "at-least-two-risk-ranked-slices",
+            "typed-end-to-end-links",
+            "unresolved-gaps",
+        },
+        "artifact:assessment.authorized-experiment-ledger": {
+            "per-action-authorization",
+            "executed-or-explicitly-not-executed",
+            "results-or-static-gap-artifacts",
+        },
+        "artifact:assessment.full-program-estimate": {
+            "phase-and-wave-range-estimates",
+            "staffing-and-environment-dependencies",
+            "risk-contingency",
+        },
+        "artifact:assessment.unverified-areas": {
+            "unverified-denominator-units",
+            "claim-ceilings",
+            "recommended-evidence-work",
+        },
+    },
+    "full-program": {
+        "artifact:program.wave-plan": {"dependency-ordered-waves"},
+        "artifact:program.phase-hash-chain": {"phase-input-and-output-hashes"},
+        "artifact:program.parent-child-summaries": {"child-hash-bound-parent-summaries"},
+        "artifact:program.review-cadence": {"scheduled-and-risk-triggered-reviews"},
+        "artifact:program.gate-ledger": {"domain-runtime-coverage-freeze-verdicts"},
+        "artifact:program.delta-ledger": {"append-only-delta-impact-and-revalidation"},
+        "artifact:program.purpose-delivery": {"selected-purpose-specific-delivery-and-exclusion-map"},
+        "artifact:program.cluster-split-freeze-ledger": {"split-and-child-freeze-decisions"},
+    },
+}
 LAYOUT_PARTITION_CONTRACT = {
     "human-docs": ("knowledge/human/", "authored", "writable-canonical"),
     "machine-records": ("knowledge/records/", "authored", "writable-canonical"),
@@ -179,6 +291,7 @@ LINK_SOURCE_DOCUMENTS = (
     *FOUNDATION_DOCUMENTS.values(),
     *ACCESS_TRACK_DOCUMENTS.values(),
     *STACK_DOCUMENTS.values(),
+    *OPERATING_PROFILE_DOCUMENTS.values(),
 )
 ALLOWED_MATURITY_LABELS = (
     "cross-project-validated",
@@ -409,6 +522,388 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         path = OPERATOR_TOOLKIT_DOCUMENTS[name]
         self.assertTrue(path.is_file(), f"missing operator toolkit: {path}")
         return path.read_text(encoding="utf-8")
+
+    def read_operating_profile(self, name):
+        path = OPERATING_PROFILE_DOCUMENTS[name]
+        self.assertTrue(path.is_file(), f"missing operating profile: {path}")
+        return path.read_text(encoding="utf-8")
+
+    def assert_operating_profile_contract(self, metadata, expected_profile):
+        self.assertEqual(
+            {
+                "profile_id",
+                "purpose",
+                "entry_conditions",
+                "timebox",
+                "roles",
+                "schedule",
+                "required_outputs",
+                "allowed_claims",
+                "forbidden_completeness_claims",
+                "exit_gate",
+                "escalation",
+                "inherited_contracts",
+                *({"full_program_controls"} if expected_profile == "full-program" else set()),
+            },
+            set(metadata),
+        )
+        self.assertEqual(expected_profile, metadata["profile_id"])
+        self.assertIsInstance(metadata["purpose"], str)
+        self.assertTrue(metadata["purpose"].strip())
+
+        entry = metadata["entry_conditions"]
+        self.assertEqual(
+            {"authorization", "scope_baseline", "access_track", "execution_branch"},
+            set(entry),
+        )
+        self.assertEqual(
+            {"artifact": "ART-P0-AUTH", "gate": "G0", "verdict": "pass"},
+            entry["authorization"],
+        )
+        self.assertEqual("ART-P1-BASELINE", entry["scope_baseline"])
+        self.assertEqual(
+            {"black-box", "gray-box", "white-box"},
+            set(entry["access_track"]["allowed"]),
+        )
+        branch = entry["execution_branch"]
+        self.assertEqual({"allowed", "approved_static_artifacts"}, set(branch))
+        self.assertEqual({"runtime", "approved-static"}, set(branch["allowed"]))
+        self.assertEqual(
+            {
+                "ART-P5-STATIC",
+                "ART-P5-RUNTIME-GAP",
+                "ART-P5-STATIC-ACCEPTANCE",
+            },
+            set(branch["approved_static_artifacts"]),
+        )
+
+        timebox = metadata["timebox"]
+        self.assertEqual(
+            {
+                "duration",
+                "hard_stop",
+                "narrows_scope_only",
+                "reduces_authorization_boundary",
+                "reduces_evidence_standard",
+            },
+            set(timebox),
+        )
+        self.assertEqual(OPERATING_PROFILE_DURATIONS[expected_profile], timebox["duration"])
+        self.assertIs(timebox["hard_stop"], True)
+        self.assertIs(timebox["narrows_scope_only"], True)
+        self.assertIs(timebox["reduces_authorization_boundary"], False)
+        self.assertIs(timebox["reduces_evidence_standard"], False)
+
+        roles = metadata["roles"]
+        self.assertIsInstance(roles, list)
+        self.assertGreaterEqual(len(roles), 4)
+        role_ids = set()
+        for role in roles:
+            self.assertEqual(
+                {"role_id", "human_required", "accountabilities"}, set(role)
+            )
+            self.assertIsInstance(role["accountabilities"], list)
+            self.assertTrue(role["accountabilities"])
+            role_ids.add(role["role_id"])
+        self.assertTrue(
+            {
+                "accountable-human",
+                "reverse-engineering-lead",
+                "evidence-custodian",
+                "domain-reviewer",
+            }.issubset(role_ids)
+        )
+        self.assertTrue(
+            all(
+                role["human_required"]
+                for role in roles
+                if role["role_id"] in {"accountable-human", "domain-reviewer"}
+            )
+        )
+
+        schedule = metadata["schedule"]
+        self.assertIsInstance(schedule, list)
+        self.assertGreaterEqual(len(schedule), 4)
+        schedule_ids = []
+        schedule_outputs = set()
+        for sequence, step in enumerate(schedule, start=1):
+            self.assertEqual(
+                {
+                    "sequence",
+                    "step_id",
+                    "depends_on",
+                    "time_window",
+                    "activity",
+                    "inputs",
+                    "outputs",
+                    "gate_effect",
+                },
+                set(step),
+            )
+            self.assertEqual(sequence, step["sequence"])
+            self.assertNotIn(step["step_id"], schedule_ids)
+            self.assertTrue(set(step["depends_on"]).issubset(set(schedule_ids)))
+            self.assertIsInstance(step["inputs"], list)
+            self.assertIsInstance(step["outputs"], list)
+            self.assertTrue(step["outputs"])
+            self.assertIn(step["gate_effect"], {"verify", "keep-pending", "review", "pass-or-fail"})
+            schedule_ids.append(step["step_id"])
+            schedule_outputs.update(step["outputs"])
+
+        outputs = metadata["required_outputs"]
+        self.assertIsInstance(outputs, list)
+        output_ids = set()
+        for output in outputs:
+            self.assertEqual(
+                {"output_id", "content_contract", "incomplete_when"}, set(output)
+            )
+            self.assertRegex(output["output_id"], STABLE_ID_PATTERN)
+            self.assertIsInstance(output["content_contract"], list)
+            self.assertTrue(output["content_contract"])
+            self.assertIsInstance(output["incomplete_when"], list)
+            self.assertTrue(output["incomplete_when"])
+            output_ids.add(output["output_id"])
+        self.assertEqual(OPERATING_PROFILE_OUTPUTS[expected_profile], output_ids)
+        self.assertTrue(output_ids.issubset(schedule_outputs))
+        outputs_by_id = {output["output_id"]: output for output in outputs}
+        for output_id, required_content in OPERATING_PROFILE_OUTPUT_CONTENT[
+            expected_profile
+        ].items():
+            self.assertTrue(
+                required_content.issubset(
+                    set(outputs_by_id[output_id]["content_contract"])
+                ),
+                f"incomplete content contract: {output_id}",
+            )
+
+        allowed_claims = metadata["allowed_claims"]
+        self.assertEqual(
+            {"statuses", "required_binding", "promotion_rule", "timebox_effect"},
+            set(allowed_claims),
+        )
+        self.assertTrue(set(allowed_claims["statuses"]).issubset(CLAIM_STATUSES))
+        self.assertTrue(
+            {"observed", "statically-supported", "inferred", "unsupported"}.issubset(
+                set(allowed_claims["statuses"])
+            )
+        )
+        self.assertEqual(
+            {"product_version", "scope", "evidence_references"},
+            set(allowed_claims["required_binding"]),
+        )
+        self.assertEqual("evidence-and-review-only", allowed_claims["promotion_rule"])
+        self.assertEqual("none", allowed_claims["timebox_effect"])
+
+        forbidden = metadata["forbidden_completeness_claims"]
+        self.assertIsInstance(forbidden, list)
+        self.assertGreaterEqual(len(forbidden), 4)
+        forbidden_ids = set()
+        for claim in forbidden:
+            self.assertEqual({"claim_id", "reason"}, set(claim))
+            self.assertTrue(claim["reason"].strip())
+            forbidden_ids.add(claim["claim_id"])
+        self.assertEqual(len(forbidden), len(forbidden_ids))
+        self.assertTrue(
+            {"full-product-complete", "zero-unknowns", "static-equals-runtime"}.issubset(
+                forbidden_ids
+            )
+        )
+
+        exit_gate = metadata["exit_gate"]
+        self.assertEqual(
+            {
+                "gate_id",
+                "required_predecessor_gates",
+                "pass_criteria",
+                "fail_conditions",
+                "does_not_imply",
+            },
+            set(exit_gate),
+        )
+        self.assertEqual("G0", exit_gate["required_predecessor_gates"][0])
+        self.assertEqual(output_ids, set(exit_gate["pass_criteria"]))
+        self.assertTrue(exit_gate["fail_conditions"])
+        self.assertTrue(exit_gate["does_not_imply"])
+
+        escalation = metadata["escalation"]
+        self.assertIsInstance(escalation, list)
+        escalation_by_trigger = {}
+        for rule in escalation:
+            self.assertEqual(
+                {"trigger", "action", "resume_condition", "owner"}, set(rule)
+            )
+            escalation_by_trigger[rule["trigger"]] = rule
+        self.assertTrue(
+            {
+                "authorization-drift",
+                "environment-identity-mismatch",
+                "unsafe-write-or-side-effect",
+                "evidence-conflict",
+                "timebox-exhausted-with-open-risk",
+            }.issubset(escalation_by_trigger)
+        )
+        for trigger in (
+            "authorization-drift",
+            "environment-identity-mismatch",
+            "unsafe-write-or-side-effect",
+        ):
+            self.assertEqual("stop", escalation_by_trigger[trigger]["action"])
+            self.assertIn("G0", escalation_by_trigger[trigger]["resume_condition"])
+
+        inherited = metadata["inherited_contracts"]
+        self.assertEqual(
+            {
+                "authorization",
+                "branches",
+                "risk_policy",
+                "unknown_policy",
+                "coverage_policy",
+                "freeze_policy",
+            },
+            set(inherited),
+        )
+        self.assertEqual(
+            {"artifact": "ART-P0-AUTH", "gate": "G0", "verdict": "pass"},
+            inherited["authorization"],
+        )
+        self.assertEqual(
+            {
+                "runtime": {
+                    "individual_action_authorization_required": True,
+                    "runtime_claim_requires_runtime_evidence": True,
+                },
+                "approved-static": {
+                    "required_artifacts": [
+                        "ART-P5-STATIC",
+                        "ART-P5-RUNTIME-GAP",
+                        "ART-P5-STATIC-ACCEPTANCE",
+                    ],
+                    "claim_ceiling": "statically-supported",
+                    "forbidden_status": "runtime-confirmed",
+                },
+            },
+            inherited["branches"],
+        )
+        self.assertEqual(
+            {
+                "P0": "stop-and-escalate-before-release",
+                "P1": "resolve-or-valid-written-acceptance",
+                "timebox_can_downgrade": False,
+            },
+            inherited["risk_policy"],
+        )
+        self.assertEqual(
+            {"record_unresolved": True, "unknown_never_counts_as_covered": True},
+            inherited["unknown_policy"],
+        )
+        self.assertEqual(
+            {"denominators_required": True, "numerator_only_forbidden": True},
+            inherited["coverage_policy"],
+        )
+        self.assertEqual(
+            {
+                "append_only": True,
+                "delta_reopens_affected_gates": True,
+                "timebox_never_auto_freezes": True,
+            },
+            inherited["freeze_policy"],
+        )
+
+    def assert_full_program_controls(self, controls, schedule):
+        self.assertEqual(
+            {
+                "phase_hashes",
+                "parent_child_summaries",
+                "review_cadence",
+                "gates",
+                "delta_handling",
+                "purpose_outputs",
+                "cluster_policy",
+            },
+            set(controls),
+        )
+        phase_hashes = controls["phase_hashes"]
+        self.assertEqual(
+            {"algorithm", "required_fields", "generation_order"}, set(phase_hashes)
+        )
+        self.assertEqual("SHA-256", phase_hashes["algorithm"])
+        self.assertEqual(
+            {"phase_id", "input_hashes", "output_hashes"},
+            set(phase_hashes["required_fields"]),
+        )
+        self.assertEqual(
+            ["content-outputs", "phase-summary", "root-summary", "freeze-attestation"],
+            phase_hashes["generation_order"],
+        )
+
+        summaries = controls["parent_child_summaries"]
+        self.assertEqual(
+            {"child_summary_required", "parent_inputs_are_child_hashes", "self_hash_excluded"},
+            set(summaries),
+        )
+        self.assertTrue(all(summaries.values()))
+
+        cadence = controls["review_cadence"]
+        self.assertEqual(
+            {"per_wave", "domain", "runtime", "freeze", "risk_triggered"},
+            set(cadence),
+        )
+        self.assertTrue(all(str(value).strip() for value in cadence.values()))
+
+        gates = controls["gates"]
+        self.assertEqual(
+            {"authorization", "runtime", "domain", "coverage", "freeze"}, set(gates)
+        )
+        self.assertEqual("G0", gates["authorization"])
+        self.assertEqual("G5", gates["runtime"])
+        self.assertEqual("G4", gates["domain"])
+        self.assertEqual("G6", gates["coverage"])
+        self.assertEqual("G7", gates["freeze"])
+
+        delta = controls["delta_handling"]
+        self.assertEqual(
+            {"append_new_records", "impact_analysis", "reopen_affected_gates", "targeted_revalidation"},
+            set(delta),
+        )
+        self.assertTrue(all(delta.values()))
+
+        purpose_outputs = controls["purpose_outputs"]
+        self.assertEqual({"rewrite", "competitor-research"}, set(purpose_outputs))
+        self.assertNotEqual(
+            set(purpose_outputs["rewrite"]), set(purpose_outputs["competitor-research"])
+        )
+        self.assertTrue(purpose_outputs["rewrite"])
+        self.assertTrue(purpose_outputs["competitor-research"])
+
+        cluster = controls["cluster_policy"]
+        self.assertEqual(
+            {"oversized_when", "split_by", "freeze_conditions"}, set(cluster)
+        )
+        self.assertEqual(
+            {"review_capacity_exceeded", "mixed_ownership", "unbounded_denominator"},
+            set(cluster["oversized_when"]),
+        )
+        self.assertTrue(cluster["split_by"])
+        self.assertEqual(
+            {"child_denominator_bound", "child_gates_pass", "child_hashes_recorded", "parent_summary_rebuilt"},
+            set(cluster["freeze_conditions"]),
+        )
+
+        schedule_ids = [step["step_id"] for step in schedule]
+        self.assertEqual(
+            [
+                "wave-0-authorize-baseline",
+                "wave-1-product-surface",
+                "wave-2-architecture-assets",
+                "wave-3-vertical-traces",
+                "wave-4-runtime-or-static-validation",
+                "wave-5-domain-synthesis",
+                "wave-6-coverage-conflict",
+                "wave-7-freeze-delivery",
+                "wave-8-delta-calibration",
+            ],
+            schedule_ids,
+        )
 
     def markdown_table(self, document, heading):
         section = self.section_text(document, heading)
@@ -7236,6 +7731,213 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         uncovered_output["validation_command"]["commands"].clear()
         with self.assertRaises(AssertionError):
             self.assert_prompt_packet_contract(uncovered_output, "freeze-audit")
+
+    def test_operating_profiles_are_linked_structured_and_share_the_core_contract(self):
+        guide = self.read_guide()
+        required_headings = (
+            "目的",
+            "进入条件",
+            "时间盒",
+            "角色",
+            "日程",
+            "必需输出",
+            "允许主张",
+            "禁止完整性主张",
+            "退出门禁",
+            "升级处理",
+            "运行契约",
+        )
+        for profile_name, path in OPERATING_PROFILE_DOCUMENTS.items():
+            with self.subTest(profile=profile_name):
+                document = self.read_operating_profile(profile_name)
+                self.assertIn(f"](operating-profiles/{profile_name}.md)", guide)
+                self.assertEqual(
+                    1,
+                    document.count("**证据成熟度：`proposed`**"),
+                )
+                self.assert_one_nonblank_applicability_declaration(document)
+                for heading in required_headings:
+                    self.assertIn(f"## {heading}", document.splitlines())
+                metadata = self.parse_yaml_metadata(document)
+                self.assert_operating_profile_contract(metadata, profile_name)
+                self.assert_local_markdown_links_resolve(path, document)
+
+    def test_one_day_triage_is_explicitly_bounded_and_incomplete(self):
+        metadata = self.parse_yaml_metadata(
+            self.read_operating_profile("one-day-triage")
+        )
+        self.assert_operating_profile_contract(metadata, "one-day-triage")
+        forbidden = {
+            claim["claim_id"]
+            for claim in metadata["forbidden_completeness_claims"]
+        }
+        self.assertTrue(
+            {
+                "complete-architecture",
+                "all-journeys-covered",
+                "rewrite-ready",
+            }.issubset(forbidden)
+        )
+        self.assertEqual("PROFILE-D1-EXIT", metadata["exit_gate"]["gate_id"])
+        self.assertTrue(
+            {
+                "G1-through-G7-pass",
+                "whole-product-completeness",
+                "rewrite-readiness",
+            }.issubset(set(metadata["exit_gate"]["does_not_imply"]))
+        )
+        escalation = {
+            rule["trigger"]: rule for rule in metadata["escalation"]
+        }
+        self.assertIn("more-depth-authorized", escalation)
+        self.assertEqual(
+            "start-one-week-assessment-or-full-program",
+            escalation["more-depth-authorized"]["action"],
+        )
+
+    def test_one_week_assessment_builds_preliminary_coverage_and_multiple_slices(self):
+        metadata = self.parse_yaml_metadata(
+            self.read_operating_profile("one-week-assessment")
+        )
+        self.assert_operating_profile_contract(metadata, "one-week-assessment")
+        outputs = {
+            output["output_id"]: set(output["content_contract"])
+            for output in metadata["required_outputs"]
+        }
+        self.assertIn(
+            "nine-dimension-preliminary-denominator",
+            outputs["artifact:assessment.preliminary-denominator"],
+        )
+        self.assertIn(
+            "at-least-two-risk-ranked-slices",
+            outputs["artifact:assessment.high-risk-vertical-slices"],
+        )
+        self.assertIn(
+            "per-action-authorization",
+            outputs["artifact:assessment.authorized-experiment-ledger"],
+        )
+        self.assertIn(
+            "phase-and-wave-range-estimates",
+            outputs["artifact:assessment.full-program-estimate"],
+        )
+        self.assertEqual("PROFILE-W1-EXIT", metadata["exit_gate"]["gate_id"])
+        escalation = {
+            rule["trigger"]: rule for rule in metadata["escalation"]
+        }
+        self.assertIn("full-program-authorized", escalation)
+        self.assertEqual(
+            "start-full-program",
+            escalation["full-program-authorized"]["action"],
+        )
+
+    def test_full_program_controls_dependency_hash_review_gate_delta_and_split_lifecycles(self):
+        metadata = self.parse_yaml_metadata(self.read_operating_profile("full-program"))
+        self.assert_operating_profile_contract(metadata, "full-program")
+        self.assert_full_program_controls(
+            metadata["full_program_controls"], metadata["schedule"]
+        )
+        self.assertEqual("G7", metadata["exit_gate"]["gate_id"])
+        self.assertEqual(
+            [f"G{index}" for index in range(7)],
+            metadata["exit_gate"]["required_predecessor_gates"],
+        )
+        schedule_by_id = {
+            step["step_id"]: step for step in metadata["schedule"]
+        }
+        self.assertIn(
+            "artifact:program.delta-ledger",
+            schedule_by_id["wave-7-freeze-delivery"]["outputs"],
+        )
+        self.assertIn(
+            "artifact:program.delta-ledger",
+            schedule_by_id["wave-8-delta-calibration"]["outputs"],
+        )
+        escalation_triggers = {
+            rule["trigger"] for rule in metadata["escalation"]
+        }
+        self.assertIn("oversized-cluster", escalation_triggers)
+
+    def test_operating_profile_contract_rejects_safety_completeness_and_freeze_mutations(self):
+        one_day = self.parse_yaml_metadata(
+            self.read_operating_profile("one-day-triage")
+        )
+        reduced_standard = copy.deepcopy(one_day)
+        reduced_standard["timebox"]["reduces_evidence_standard"] = True
+        with self.assertRaises(AssertionError):
+            self.assert_operating_profile_contract(
+                reduced_standard, "one-day-triage"
+            )
+
+        stale_authorization = copy.deepcopy(one_day)
+        stale_authorization["entry_conditions"]["authorization"]["verdict"] = "pending"
+        with self.assertRaises(AssertionError):
+            self.assert_operating_profile_contract(
+                stale_authorization, "one-day-triage"
+            )
+
+        static_overclaim = copy.deepcopy(one_day)
+        static_overclaim["inherited_contracts"]["branches"]["approved-static"][
+            "claim_ceiling"
+        ] = "runtime-confirmed"
+        with self.assertRaises(AssertionError):
+            self.assert_operating_profile_contract(static_overclaim, "one-day-triage")
+
+        hidden_unknown = copy.deepcopy(one_day)
+        hidden_unknown["inherited_contracts"]["unknown_policy"][
+            "unknown_never_counts_as_covered"
+        ] = False
+        with self.assertRaises(AssertionError):
+            self.assert_operating_profile_contract(hidden_unknown, "one-day-triage")
+
+        downgraded_p0 = copy.deepcopy(one_day)
+        downgraded_p0["inherited_contracts"]["risk_policy"]["P0"] = (
+            "continue-until-timebox-ends"
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_operating_profile_contract(downgraded_p0, "one-day-triage")
+
+        missing_output = copy.deepcopy(one_day)
+        missing_output["required_outputs"].pop()
+        with self.assertRaises(AssertionError):
+            self.assert_operating_profile_contract(missing_output, "one-day-triage")
+
+        future_dependency = copy.deepcopy(one_day)
+        future_dependency["schedule"][1]["depends_on"] = [
+            future_dependency["schedule"][-1]["step_id"]
+        ]
+        with self.assertRaises(AssertionError):
+            self.assert_operating_profile_contract(future_dependency, "one-day-triage")
+
+        missing_content = copy.deepcopy(one_day)
+        missing_content["required_outputs"][0]["content_contract"].clear()
+        with self.assertRaises(AssertionError):
+            self.assert_operating_profile_contract(missing_content, "one-day-triage")
+
+        full_program = self.parse_yaml_metadata(
+            self.read_operating_profile("full-program")
+        )
+        recursive_hash = copy.deepcopy(full_program["full_program_controls"])
+        recursive_hash["phase_hashes"]["generation_order"] = [
+            "freeze-attestation",
+            "content-outputs",
+            "phase-summary",
+            "root-summary",
+        ]
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                recursive_hash, full_program["schedule"]
+            )
+
+        unsafe_cluster_freeze = copy.deepcopy(
+            full_program["full_program_controls"]
+        )
+        unsafe_cluster_freeze["cluster_policy"]["freeze_conditions"].remove(
+            "child_gates_pass"
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                unsafe_cluster_freeze, full_program["schedule"]
+            )
 
     def test_guide_readme_links_every_foundation_document_relatively(self):
         guide = self.read_guide()
