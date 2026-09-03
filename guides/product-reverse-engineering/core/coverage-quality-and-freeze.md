@@ -99,7 +99,7 @@ G5 先记录所选分支，再分别计算 gate verdict 与 runtime-confirmation
 
 ## 门禁判定记录与 Phase 产物
 
-每个 `ART-G*` 都是按固定规则计算的**派生判定记录**：它引用 Phase 产物的稳定 ID、版本和内容哈希，保存规则版本、门禁判定、理由、评审人和时间。它只包装并引用输入，**绝不替代 Phase 产物**，也不成为产品事实的**第二事实权威**；事实、证据、未知与风险仍以 `ART-P*` 及其引用对象为准。
+每个 `ART-G*` 都是按固定规则计算的**派生判定记录**：它引用 Phase 产物与人工决定产物的稳定 ID、版本和内容哈希，只保存下方封闭字段。它只包装并引用输入，**绝不替代 Phase 产物**，也不成为产品事实的**第二事实权威**；事实、证据、未知与风险仍以 `ART-P*` 及其引用对象为准。
 
 | Gate | 派生门禁记录 | 明确引用的不可变 Phase 产物 |
 | --- | --- | --- |
@@ -111,6 +111,24 @@ G5 先记录所选分支，再分别计算 gate verdict 与 runtime-confirmation
 | `G5` | `ART-G5-VALIDATION` | 运行分支引用 `ART-P5-PROTOCOL`、`ART-P5-RESULT`、`ART-P5-EFFECTS`；非运行分支引用 `ART-P5-STATIC`、`ART-P5-RUNTIME-GAP`、`ART-P5-STATIC-ACCEPTANCE` |
 | `G6` | `ART-G6-AUDIT` | `ART-P7-AUDIT`、`ART-P7-CONFLICT`、`ART-P7-UNCERTAINTY`、`ART-P7-ACCEPTANCE` |
 | `G7` | `ART-G7-RELEASE` | `ART-P8-APPROVAL`、`ART-P8-RELEASE`，以及选定目的的 `ART-P8-REWRITE`、`ART-P8-MIGRATION`、`ART-P8-REPLACEMENT`、`ART-P8-DUE-DILIGENCE` 或 `ART-P8-COMPETITOR` |
+
+### 派生门禁记录字段
+
+| 字段 | 确定性内容 |
+| --- | --- |
+| `gate record ID` | 由 gate、schema、规则和输入内容身份确定的稳定记录 ID |
+| `gate ID` | G0–G7 中被计算的唯一门禁 ID |
+| `schema version` | 本字段集合与序列化规范的固定版本 |
+| `rule version` | 用于计算判定的规则内容身份 |
+| `input artifact IDs/hashes` | 被验证 Phase 产物的稳定 ID、版本和内容哈希 |
+| `human-decision artifact IDs/hashes` | 已存在的不可变人工决定产物稳定 ID、版本和内容哈希 |
+| `verdict` | 按规则计算的 `pending`、`pass`、`fail` 或允许范围内的 `not-applicable` |
+| `derived reason codes` | 由规则和输入确定的规范原因码集合，按稳定顺序输出 |
+| `generator version` | 执行规则的生成器内容身份与固定参数版本 |
+
+### 分离执行元数据
+
+作业 ID、执行主机和执行时间属于分离的运行日志，不进入确定性身份，也不进入 ART-G 字段、内容哈希或判定；重新运行同一规则与输入时即使执行时间不同，也必须产生相同 ART-G。人工决定产物 ID/哈希保留在确定性字段中，但决定人的身份、决定时间、决定内容和证明只存在于被引用的不可变人工决定产物，不能复制或推导到 ART-G。
 
 派生记录必须可由同一输入哈希和规则版本确定性重建。重建得到不同判定时 G6/G7 不能通过；修正规则或 Phase 产物会创建新版本及生命周期关系，不回写旧判定记录。
 

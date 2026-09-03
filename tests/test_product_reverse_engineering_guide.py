@@ -130,6 +130,42 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIn("Git commit 或外部签名", freeze_order)
         self.assertIn("不得递归包含自身哈希", freeze_order)
 
+    def assert_deterministic_gate_record_schema(self, document):
+        gate_records = self.section_text(document, "## 门禁判定记录与 Phase 产物")
+        schema = self.section_text(gate_records, "### 派生门禁记录字段")
+        fields = [
+            match.group(1)
+            for line in schema.splitlines()
+            if (match := re.fullmatch(r"\| `([^`]+)` \| .+ \|", line))
+        ]
+        self.assertEqual(
+            [
+                "gate record ID",
+                "gate ID",
+                "schema version",
+                "rule version",
+                "input artifact IDs/hashes",
+                "human-decision artifact IDs/hashes",
+                "verdict",
+                "derived reason codes",
+                "generator version",
+            ],
+            fields,
+        )
+        for forbidden_metadata in (
+            "reviewer",
+            "approver",
+            "signature",
+            "approval time",
+            "execution timestamp",
+            "评审人",
+            "批准人",
+            "签名",
+            "批准时间",
+            "执行时间",
+        ):
+            self.assertNotIn(forbidden_metadata, schema)
+
     def test_required_entry_files_exist(self):
         for path in REQUIRED_ENTRY_FILES:
             self.assertTrue(path.is_file(), f"missing required entry file: {path}")
@@ -806,6 +842,25 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             with self.subTest(contract=contract):
                 self.assertIn(contract, boundary)
         self.assertIn("人工决定先于门禁判定", boundary)
+
+    def test_derived_gate_record_schema_excludes_human_and_time_metadata(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        self.assert_deterministic_gate_record_schema(document)
+
+        records = self.section_text(document, "## 门禁判定记录与 Phase 产物")
+        detached = self.section_text(records, "### 分离执行元数据")
+        self.assertIn("执行时间", detached)
+        self.assertIn("不进入确定性身份", detached)
+        self.assertIn("人工决定产物 ID/哈希", detached)
+
+    def test_gate_record_schema_rejects_reviewer_metadata_mutation(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        mutated = document.replace(
+            "| `generator version` |",
+            "| `reviewer` | 人工评审者 |\n| `generator version` |",
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_deterministic_gate_record_schema(mutated)
 
     def test_coverage_summaries_and_freeze_are_deterministic_and_append_only(self):
         document = self.read_foundation_document("coverage-quality-and-freeze")
