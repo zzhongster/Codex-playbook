@@ -905,24 +905,46 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         )
         node_ids = set()
         node_contracts = {}
-        for node_id, node_kind, status, _boundary in node_rows:
+        for node_id, node_kind, status, boundary in node_rows:
             self.assertRegex(node_id, stable_id_pattern)
             self.assertIn(status, CLAIM_STATUSES)
             node_ids.add(node_id)
-            node_contracts[node_id] = (node_kind, status)
+            node_contracts[node_id] = (node_kind, status, boundary.strip())
         self.assertEqual(len(node_ids), len(node_rows))
+        for required_node_id in (
+            "asset:sample.java-service",
+            "claim:sample.internal-db-path",
+            "claim:sample.sync-visible-result",
+            "claim:sample.later-visible-result",
+            "data:sample.atomic-business-outbox-commit",
+            "asset:sample.outbox-relay",
+        ):
+            self.assertIn(required_node_id, node_contracts)
         self.assertEqual(
             ("service", "statically-supported"),
-            node_contracts["asset:sample.java-service"],
+            node_contracts["asset:sample.java-service"][:2],
         )
         self.assertEqual(
             ("internal-claim", "statically-supported"),
-            node_contracts["claim:sample.internal-db-path"],
+            node_contracts["claim:sample.internal-db-path"][:2],
         )
         self.assertEqual(
             ("visible-claim", "runtime-confirmed"),
-            node_contracts["claim:sample.visible-result"],
+            node_contracts["claim:sample.sync-visible-result"][:2],
         )
+        self.assertEqual(
+            ("visible-claim", "runtime-confirmed"),
+            node_contracts["claim:sample.later-visible-result"][:2],
+        )
+        self.assertEqual(
+            ("atomic-business-outbox-transaction-outcome", "statically-supported"),
+            node_contracts["data:sample.atomic-business-outbox-commit"][:2],
+        )
+        self.assertIn(
+            "业务数据库变更与 Outbox 记录在同一事务提交",
+            node_contracts["data:sample.atomic-business-outbox-commit"][2],
+        )
+        self.assertNotIn("claim:sample.visible-result", node_ids)
 
         evidence = self.section_text(trace, "### 证据注册表")
         evidence_pattern = re.compile(r"\| `([^`]+)` \| [^|]+ \|")
@@ -959,7 +981,8 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         links = self.section_text(trace, "### 类型化链接")
         link_pattern = re.compile(
             r"\| `([^`]+)` \| `([^`]+)` \| `([a-z-]+)` \| `([^`]+)` \| "
-            r"`([^`]+)` \| `(required|optional)` \| `([^`]+)` \| `([^`]+)` \|"
+            r"`([^`]+)` \| `(shared|sync-optional|async-optional)` \| "
+            r"`([^`]+)` \| `([^`]+)` \|"
         )
         link_table_rows = [
             line for line in links.splitlines() if line.startswith("| `trace-link:")
@@ -970,8 +993,12 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             if (match := link_pattern.fullmatch(line))
         ]
         self.assertEqual(len(link_table_rows), len(link_rows))
-        self.assertGreaterEqual(len(link_rows), 11)
-        self.assertIn("optional", {row[5] for row in link_rows})
+        self.assertGreaterEqual(len(link_rows), 15)
+        self.assertEqual(
+            {"shared", "sync-optional", "async-optional"},
+            {row[5] for row in link_rows},
+        )
+        self.assertEqual(len(link_rows), len({row[0] for row in link_rows}))
         for (
             link_id,
             source_id,
@@ -1011,48 +1038,227 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 )
 
         expected_links = {
-            ("integration:sample.http-input", "calls", "asset:sample.validation"),
-            ("asset:sample.validation", "calls", "asset:sample.authorization"),
-            ("asset:sample.authorization", "calls", "asset:sample.java-service"),
-            ("asset:sample.java-service", "calls", "asset:sample.transaction"),
-            ("asset:sample.transaction", "writes", "data:sample.db-mutation"),
-            ("asset:sample.java-service", "writes", "data:sample.outbox-row"),
-            ("data:sample.outbox-row", "emits", "integration:sample.message"),
-            ("integration:sample.message", "calls", "asset:sample.consumer-job"),
-            ("asset:sample.consumer-job", "supports", "claim:sample.visible-result"),
+            (
+                "integration:sample.http-input",
+                "calls",
+                "asset:sample.validation",
+                "shared",
+            ),
+            (
+                "asset:sample.validation",
+                "calls",
+                "asset:sample.authorization",
+                "shared",
+            ),
+            (
+                "asset:sample.authorization",
+                "calls",
+                "asset:sample.java-service",
+                "shared",
+            ),
+            (
+                "asset:sample.java-service",
+                "calls",
+                "asset:sample.transaction",
+                "shared",
+            ),
+            (
+                "asset:sample.transaction",
+                "writes",
+                "data:sample.business-commit",
+                "sync-optional",
+            ),
+            (
+                "data:sample.business-commit",
+                "supports",
+                "integration:sample.http-response",
+                "sync-optional",
+            ),
+            (
+                "integration:sample.http-response",
+                "supports",
+                "claim:sample.sync-visible-result",
+                "sync-optional",
+            ),
+            (
+                "asset:sample.transaction",
+                "writes",
+                "data:sample.atomic-business-outbox-commit",
+                "async-optional",
+            ),
+            (
+                "asset:sample.outbox-relay",
+                "reads",
+                "data:sample.atomic-business-outbox-commit",
+                "async-optional",
+            ),
+            (
+                "asset:sample.outbox-relay",
+                "emits",
+                "integration:sample.message",
+                "async-optional",
+            ),
+            (
+                "integration:sample.message",
+                "calls",
+                "asset:sample.consumer-job",
+                "async-optional",
+            ),
+            (
+                "asset:sample.consumer-job",
+                "supports",
+                "claim:sample.later-visible-result",
+                "async-optional",
+            ),
             (
                 "evidence:sample.source-structure",
                 "supports",
                 "claim:sample.internal-db-path",
+                "async-optional",
             ),
             (
-                "evidence:sample.runtime-visible",
+                "data:sample.atomic-business-outbox-commit",
+                "supports",
+                "claim:sample.internal-db-path",
+                "async-optional",
+            ),
+            (
+                "evidence:sample.runtime-sync-visible",
                 "validates",
-                "claim:sample.visible-result",
+                "claim:sample.sync-visible-result",
+                "sync-optional",
+            ),
+            (
+                "evidence:sample.runtime-later-visible",
+                "validates",
+                "claim:sample.later-visible-result",
+                "async-optional",
             ),
         }
         observed_links = {
-            (source_id, relation, target_id)
+            (source_id, relation, target_id, branch)
             for (
                 _link_id,
                 source_id,
                 relation,
                 target_id,
                 _status,
-                _branch,
+                branch,
                 _evidence_references,
                 _context_references,
             ) in link_rows
         }
         self.assertTrue(expected_links.issubset(observed_links))
+
+        def has_path(source_id, target_id, allowed_branches):
+            adjacency = {}
+            for (
+                _link_id,
+                edge_source,
+                relation,
+                edge_target,
+                _status,
+                branch,
+                _evidence_references,
+                _context_references,
+            ) in link_rows:
+                if branch in allowed_branches:
+                    if relation == "reads":
+                        adjacency.setdefault(edge_target, set()).add(edge_source)
+                    else:
+                        adjacency.setdefault(edge_source, set()).add(edge_target)
+            pending = [source_id]
+            visited = set()
+            while pending:
+                current = pending.pop()
+                if current == target_id:
+                    return True
+                if current in visited:
+                    continue
+                visited.add(current)
+                pending.extend(adjacency.get(current, ()))
+            return False
+
+        self.assertTrue(
+            has_path(
+                "integration:sample.http-input",
+                "claim:sample.sync-visible-result",
+                {"shared", "sync-optional"},
+            )
+        )
+        self.assertTrue(
+            has_path(
+                "integration:sample.http-input",
+                "claim:sample.later-visible-result",
+                {"shared", "async-optional"},
+            )
+        )
+        self.assertFalse(
+            has_path(
+                "asset:sample.consumer-job",
+                "claim:sample.sync-visible-result",
+                {"shared", "sync-optional", "async-optional"},
+            )
+        )
+
+        undirected = {node_id: set() for node_id in node_ids}
+        for row in link_rows:
+            undirected[row[1]].add(row[3])
+            undirected[row[3]].add(row[1])
+        pending = ["integration:sample.http-input"]
+        connected = set()
+        while pending:
+            current = pending.pop()
+            if current in connected:
+                continue
+            connected.add(current)
+            pending.extend(undirected[current])
+        self.assertEqual(node_ids, connected)
+
+        visible_validation_edges = {
+            target_id: (source_id, status, branch)
+            for (
+                _link_id,
+                source_id,
+                relation,
+                target_id,
+                status,
+                branch,
+                _evidence_references,
+                _context_references,
+            ) in link_rows
+            if relation == "validates" and target_id.startswith("claim:sample.")
+        }
+        self.assertEqual(
+            {
+                "claim:sample.sync-visible-result": (
+                    "evidence:sample.runtime-sync-visible",
+                    "runtime-confirmed",
+                    "sync-optional",
+                ),
+                "claim:sample.later-visible-result": (
+                    "evidence:sample.runtime-later-visible",
+                    "runtime-confirmed",
+                    "async-optional",
+                ),
+            },
+            visible_validation_edges,
+        )
         self.assertIn(
-            "HTTP 输入 → 校验 → 授权 → 服务 → 事务 → 数据库变更 → "
-            "可选 Outbox/消息 → 消费者/任务 → 可观察结果",
+            "HTTP 输入 → 校验 → 授权 → 服务 → 事务 → "
+            "业务数据库变更与 Outbox 记录的原子提交 → relay/消息 → "
+            "消费者/任务 → 稍后可见结果",
             trace,
         )
-        self.assertIn("可选分支缺失时保留缺口且不创建占位边", trace)
-        self.assertIn("可见结果主张与内部实现主张使用不同稳定 ID", trace)
-        self.assertIn("不能由内部链取代可见结果自己的运行证据", trace)
+        for contract in (
+            "同步响应/即时可见确认是独立分支",
+            "Outbox 分支不是必经路径",
+            "消费者不位于即时 HTTP 响应之前",
+            "可选分支缺失时保留缺口且不创建占位边",
+            "可见结果主张与内部实现主张使用不同稳定 ID",
+            "每个可见主张都由自己的运行证据独立验证",
+        ):
+            self.assertIn(contract, trace)
 
     def assert_deterministic_gate_record_schema(self, document):
         gate_records = self.section_text(document, "## 门禁判定记录与 Phase 产物")
@@ -1891,6 +2097,100 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             messaging,
         )
 
+    def test_java_generated_persistence_factories_and_mappers_have_claim_ceilings(self):
+        document = self.read_stack_document("java-backends")
+        persistence = self.section_text(document, "## 持久化、SQL 与迁移")
+        generated = self.section_text(persistence, "### 生成式持久化调用")
+        for contract in (
+            "Spring Data repository factory/proxy 仅在实际发现时建立",
+            "派生查询方法",
+            "自定义 fragment/实现",
+            "接口方法可能在运行时由 factory/proxy 提供实现",
+            "MyBatis mapper proxy",
+            "XML statement",
+            "注解 SQL",
+            "namespace + statement ID",
+            "不得虚构方法体",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, generated)
+
+        expected_rows = {
+            "Spring Data 接口声明": (
+                "statically-supported",
+                "不证明目标部署生成代理或调用该方法",
+            ),
+            "MyBatis mapper 声明": (
+                "statically-supported",
+                "不证明 mapper proxy 已创建或 SQL 已执行",
+            ),
+            "部署注册/装配元数据": (
+                "observed",
+                "不证明某请求调用该代理",
+            ),
+            "已关联的代理/mapper 调用": (
+                "runtime-confirmed",
+                "只限已绑定部署、配置、输入和 SQL/结果的调用",
+            ),
+        }
+        observed_rows = {}
+        for line in generated.splitlines():
+            match = re.fullmatch(
+                r"\| ([^|]+) \| `([^`]+)` \| [^|]+ \| ([^|]+) \|",
+                line,
+            )
+            if match and match.group(1).strip() in expected_rows:
+                observed_rows[match.group(1).strip()] = (
+                    match.group(2).strip(),
+                    match.group(3).strip(),
+                )
+        self.assertEqual(expected_rows, observed_rows)
+
+        mutations = {
+            "forces Spring Data": document.replace(
+                "Spring Data repository factory/proxy 仅在实际发现时建立",
+                "每个 repository 都按 Spring Data factory/proxy 建立",
+            ),
+            "promotes interface declaration to runtime": document.replace(
+                "| Spring Data 接口声明 | `statically-supported` |",
+                "| Spring Data 接口声明 | `runtime-confirmed` |",
+            ),
+            "invents generated method body": document.replace(
+                "不得虚构方法体",
+                "按接口名称补写生成方法体",
+            ),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                self.assertNotEqual(document, mutation)
+                mutated_persistence = self.section_text(
+                    mutation, "## 持久化、SQL 与迁移"
+                )
+                mutated_generated = self.section_text(
+                    mutated_persistence, "### 生成式持久化调用"
+                )
+                with self.assertRaises(AssertionError):
+                    if name == "promotes interface declaration to runtime":
+                        mutated_rows = {}
+                        for line in mutated_generated.splitlines():
+                            match = re.fullmatch(
+                                r"\| ([^|]+) \| `([^`]+)` \| [^|]+ \| ([^|]+) \|",
+                                line,
+                            )
+                            if match and match.group(1).strip() in expected_rows:
+                                mutated_rows[match.group(1).strip()] = (
+                                    match.group(2).strip(),
+                                    match.group(3).strip(),
+                                )
+                        self.assertEqual(expected_rows, mutated_rows)
+                    else:
+                        required = (
+                            "Spring Data repository factory/proxy 仅在实际发现时建立",
+                            "不得虚构方法体",
+                        )
+                        for contract in required:
+                            self.assertIn(contract, mutated_generated)
+
     def test_java_compiled_only_evidence_records_identity_and_claim_ceiling(self):
         document = self.read_stack_document("java-backends")
         compiled = self.section_text(document, "## 仅编译制品与反编译边界")
@@ -1957,12 +2257,12 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "| `trace-link:sample.http-to-validation` | "
                 "`integration:sample.http-input` | `calls` | "
                 "`asset:sample.validation` | `statically-supported` | "
-                "`required` | `evidence:sample.source-structure` | "
+                "`shared` | `evidence:sample.source-structure` | "
                 "`context:sample.source-artifact` |",
                 "| `trace-link:sample.http-to-validation` | "
                 "`integration:sample.http-input` | `calls` | "
                 "`asset:sample.validation` | `statically-supported` | "
-                "`required` |  | `context:sample.source-artifact` |",
+                "`shared` |  | `context:sample.source-artifact` |",
             ),
             "undeclared evidence": document.replace(
                 "`evidence:sample.source-structure` | "
@@ -1977,6 +2277,33 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "`evidence:sample.source-structure` | "
                 "`context:sample.missing-source` |",
                 1,
+            ),
+            "breaks atomic business outbox outcome": document.replace(
+                "| `data:sample.atomic-business-outbox-commit` | "
+                "`atomic-business-outbox-transaction-outcome` |",
+                "| `data:sample.atomic-business-outbox-commit` | `outbox-row` |",
+            ),
+            "disconnects async path": document.replace(
+                "| `trace-link:sample.transaction-to-atomic-outcome` | "
+                "`asset:sample.transaction` | `writes` | "
+                "`data:sample.atomic-business-outbox-commit` |",
+                "| `trace-link:sample.transaction-to-atomic-outcome` | "
+                "`asset:sample.java-service` | `writes` | "
+                "`data:sample.atomic-business-outbox-commit` |",
+            ),
+            "consumer precedes sync response": document.replace(
+                "| `trace-link:sample.commit-to-http-response` | "
+                "`data:sample.business-commit` | `supports` | "
+                "`integration:sample.http-response` |",
+                "| `trace-link:sample.commit-to-http-response` | "
+                "`asset:sample.consumer-job` | `supports` | "
+                "`integration:sample.http-response` |",
+            ),
+            "drops independent later visible validation": document.replace(
+                "| `trace-link:sample.runtime-to-later-visible` | "
+                "`evidence:sample.runtime-later-visible` | `validates` |",
+                "| `trace-link:sample.runtime-to-later-visible` | "
+                "`evidence:sample.runtime-later-visible` | `supports` |",
             ),
         }
         for name, mutation in mutations.items():

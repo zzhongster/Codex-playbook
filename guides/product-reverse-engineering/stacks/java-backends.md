@@ -86,6 +86,23 @@ JPA/Hibernate 映射、级联、flush、dirty checking、乐观锁和二级缓�
 
 MyBatis XML/注解 mapper 需展开 include、result map、provider 和条件片段；JDBC 追踪参数绑定、批处理、generated key 和资源边界；动态 SQL 保存模板、输入来源、候选对象和无法静态解析部分。SQL 拼接、schema 别名、路由数据源或存储过程不能靠短名自动连边。
 
+### 生成式持久化调用
+
+Spring Data repository factory/proxy 仅在实际发现时建立。先核对对应 Spring Data 模块与版本、repository 扫描或显式启用、factory bean、base interface、排除条件和目标部署装配；依赖坐标或一个 repository 接口只能证明组件/声明存在。接口方法可能在运行时由 factory/proxy 提供实现，缺少手写实现体不等于无执行路径，也不能证明目标部署已经生成或调用代理。
+
+对派生查询方法，记录方法签名、领域属性解析、关键字/运算符、返回包装、排序/分页和框架版本，并建立“调用点 → repository 接口方法 → factory/proxy 候选 → 解析后的查询/数据库对象候选”。方法名只能支持按该版本语法得到的查询候选，不能直接证明最终 JPQL/SQL、参数值、过滤器、fetch 行为或执行结果。对自定义 fragment/实现，核对显式组合、命名约定、实现 bean、优先级和注入选择；同名 `Impl` 类不自动等于被采用的 fragment。
+
+MyBatis mapper proxy 同样是条件分支。将接口方法按已绑定 `SqlSessionFactory`/configuration 解析到 XML statement 的 namespace + statement ID、注解 SQL 或 provider 方法，再展开 include、动态标签、result map 和数据库对象。`@Mapper`、scan 配置、XML 资源或接口单独存在都不能证明 mapper 已注册；接口方法没有手写方法体时，也不得跳过 proxy/statement 解析而直接连到猜测的 SQL。
+
+映射生成/代理调用时保留接口方法、factory/proxy 或 mapper proxy、派生查询/fragment/statement、最终 SQL 候选与数据库对象为不同节点；每条边记录框架版本、配置条件、候选集合、证据和验证方法。反编译代理类、日志中的代理名或框架文档不能补成业务源码；找不到手写实现时保留动态边和 candidate set，不得虚构方法体。
+
+| 证据面 | 最高起始状态 | 可建立的限定关系 | 不可外推 |
+| --- | --- | --- | --- |
+| Spring Data 接口声明 | `statically-supported` | 接口方法到 factory/proxy、派生查询方法或自定义 fragment/实现候选 | 不证明目标部署生成代理或调用该方法 |
+| MyBatis mapper 声明 | `statically-supported` | 接口方法到 XML/注解/provider statement 候选 | 不证明 mapper proxy 已创建或 SQL 已执行 |
+| 部署注册/装配元数据 | `observed` | 指定制品与配置中的 repository/mapper 注册事实 | 不证明某请求调用该代理 |
+| 已关联的代理/mapper 调用 | `runtime-confirmed` | 调用点、代理/statement、SQL 与结果的限定运行链 | 只限已绑定部署、配置、输入和 SQL/结果的调用 |
+
 Flyway、Liquibase、自研迁移和 ORM schema generation 都是条件分支。迁移文件存在只证明制品内容；部署是否执行、顺序、checksum、repair/baseline 和目标 schema 状态需部署或只读数据库证据，且数据库读取与任何迁移执行分别授权。
 
 ## 消息、Outbox 与消费者
@@ -178,9 +195,11 @@ Outbox 需要证明业务写与 outbox 写的事务关系、relay 选择和锁�
 
 ## 纵向追踪示例
 
-下面是中性教学切片，不代表任何具体工程、框架、路由、表、topic 或业务语义。主路径写作“HTTP 输入 → 校验 → 授权 → 服务 → 事务 → 数据库变更 → 可选 Outbox/消息 → 消费者/任务 → 可观察结果”；可选分支缺失时保留缺口且不创建占位边。若实际产品没有 HTTP、数据库、消息或任务，则从真实入口选择另一条切片。
+下面是中性教学切片，不代表任何具体工程、框架、路由、表、topic 或业务语义。共享前缀从 HTTP 输入追到事务，之后展示两条分别取证的可选延续。异步路径是“HTTP 输入 → 校验 → 授权 → 服务 → 事务 → 业务数据库变更与 Outbox 记录的原子提交 → relay/消息 → 消费者/任务 → 稍后可见结果”；同步响应/即时可见确认是独立分支。`reads` 链接按数据流方向理解为“原子提交 → relay”，同时保持关系记录的规范方向“relay `reads` 原子提交”。
 
-可见结果主张与内部实现主张使用不同稳定 ID。静态源码可以支持内部链，运行观察可以验证已测可见结果；可选异步边即使得到内部证据，也不能由内部链取代可见结果自己的运行证据。
+Outbox 分支不是必经路径；只有源码、配置与部署证据支持同一事务写入时才创建原子结果节点，只有 relay 读取与发布有证据时才继续到消息。同步分支可以在事务完成后直接形成 HTTP 响应与即时确认，消费者不位于即时 HTTP 响应之前。两条分支可以按目标产品证据单独出现或并存，可选分支缺失时保留缺口且不创建占位边。
+
+可见结果主张与内部实现主张使用不同稳定 ID。每个可见主张都由自己的运行证据独立验证：同步响应证据不验证稍后异步结果，消费者/任务或内部 Outbox 链也不验证任何可见结果。静态内部链不能取代可见主张的运行证据。
 
 ### 节点注册表
 
@@ -191,14 +210,18 @@ Outbox 需要证明业务写与 outbox 写的事务关系、relay 选择和锁�
 | `asset:sample.authorization` | `authorization` | `statically-supported` | 指定源码制品中的授权候选 |
 | `asset:sample.java-service` | `service` | `statically-supported` | 指定源码制品中的服务调用候选 |
 | `asset:sample.transaction` | `transaction` | `statically-supported` | 指定 manager 与调用路径候选 |
-| `data:sample.db-mutation` | `db-mutation` | `statically-supported` | 完全限定对象的写入候选，不代表已经提交 |
-| `data:sample.outbox-row` | `outbox` | `statically-supported` | 仅在发现 Outbox 时保留的可选节点 |
-| `integration:sample.message` | `message` | `inferred` | 仅在部署/运行有消息迹象时保留 |
+| `data:sample.business-commit` | `atomic-business-transaction-outcome` | `statically-supported` | 同步示例中的业务数据库变更提交，不要求 Outbox |
+| `integration:sample.http-response` | `http-response` | `observed` | 事务完成后的同步响应候选，与消费者顺序无关 |
+| `data:sample.atomic-business-outbox-commit` | `atomic-business-outbox-transaction-outcome` | `statically-supported` | 业务数据库变更与 Outbox 记录在同一事务提交；仅在有证据时保留 |
+| `asset:sample.outbox-relay` | `outbox-relay` | `inferred` | 读取已提交 Outbox 并发布的可选 relay 候选 |
+| `integration:sample.message` | `message` | `inferred` | relay 发布的可选消息，不预设投递语义 |
 | `asset:sample.consumer-job` | `consumer-job` | `inferred` | 消费者或任务的可选候选 |
 | `claim:sample.internal-db-path` | `internal-claim` | `statically-supported` | 内部实现链主张，与可见结果分立 |
-| `claim:sample.visible-result` | `visible-claim` | `runtime-confirmed` | 仅限已回放部署、角色、输入和结果 |
+| `claim:sample.sync-visible-result` | `visible-claim` | `runtime-confirmed` | 同步响应/即时确认，仅限对应回放 |
+| `claim:sample.later-visible-result` | `visible-claim` | `runtime-confirmed` | 稍后可见结果，仅限异步终态回放 |
 | `evidence:sample.source-structure` | `static-evidence` | `observed` | 已哈希源码/制品与工具输出 |
-| `evidence:sample.runtime-visible` | `runtime-evidence` | `observed` | 已授权且可重复的可见结果记录 |
+| `evidence:sample.runtime-sync-visible` | `runtime-evidence` | `observed` | 已授权且可重复的同步响应/即时确认记录 |
+| `evidence:sample.runtime-later-visible` | `runtime-evidence` | `observed` | 已授权且可重复的稍后可见终态记录 |
 | `evidence:sample.async-candidate` | `derived-evidence` | `observed` | 可选异步配置/部署/trace 候选 |
 
 ### 证据注册表
@@ -208,7 +231,8 @@ Outbox 需要证明业务写与 outbox 写的事务关系、relay 选择和锁�
 | 证据 ID | 来源与身份 |
 | --- | --- |
 | `evidence:sample.source-structure` | 指定提交/制品哈希、静态位置与分析工具版本 |
-| `evidence:sample.runtime-visible` | 当前 G0、部署身份、场景输入、重复步骤与脱敏结果哈希 |
+| `evidence:sample.runtime-sync-visible` | 当前 G0、部署身份、同步场景输入、重复步骤与脱敏响应哈希 |
+| `evidence:sample.runtime-later-visible` | 当前 G0、部署身份、异步场景输入、关联身份、等待边界与脱敏终态哈希 |
 | `evidence:sample.async-candidate` | 指定部署中的可选消息/任务配置或关联 trace 候选 |
 
 ### 上下文注册表
@@ -224,19 +248,25 @@ Outbox 需要证明业务写与 outbox 写的事务关系、relay 选择和锁�
 
 | 链接 ID | 源 ID | 关系 | 目标 ID | 当前状态 | 分支 | 证据引用 | 上下文引用 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `trace-link:sample.http-to-validation` | `integration:sample.http-input` | `calls` | `asset:sample.validation` | `statically-supported` | `required` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
-| `trace-link:sample.validation-to-auth` | `asset:sample.validation` | `calls` | `asset:sample.authorization` | `statically-supported` | `required` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
-| `trace-link:sample.auth-to-service` | `asset:sample.authorization` | `calls` | `asset:sample.java-service` | `statically-supported` | `required` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
-| `trace-link:sample.service-to-transaction` | `asset:sample.java-service` | `calls` | `asset:sample.transaction` | `statically-supported` | `required` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
-| `trace-link:sample.transaction-to-db` | `asset:sample.transaction` | `writes` | `data:sample.db-mutation` | `statically-supported` | `required` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
-| `trace-link:sample.service-to-outbox` | `asset:sample.java-service` | `writes` | `data:sample.outbox-row` | `statically-supported` | `optional` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
-| `trace-link:sample.outbox-to-message` | `data:sample.outbox-row` | `emits` | `integration:sample.message` | `inferred` | `optional` | `evidence:sample.async-candidate` | `context:sample.deployed-runtime` |
-| `trace-link:sample.message-to-consumer` | `integration:sample.message` | `calls` | `asset:sample.consumer-job` | `inferred` | `optional` | `evidence:sample.async-candidate` | `context:sample.deployed-runtime` |
-| `trace-link:sample.consumer-to-visible` | `asset:sample.consumer-job` | `supports` | `claim:sample.visible-result` | `inferred` | `optional` | `evidence:sample.async-candidate` | `context:sample.deployed-runtime` |
-| `trace-link:sample.source-to-internal` | `evidence:sample.source-structure` | `supports` | `claim:sample.internal-db-path` | `statically-supported` | `required` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
-| `trace-link:sample.runtime-to-visible` | `evidence:sample.runtime-visible` | `validates` | `claim:sample.visible-result` | `runtime-confirmed` | `required` | `evidence:sample.runtime-visible` | `context:sample.deployed-runtime` |
+| `trace-link:sample.http-to-validation` | `integration:sample.http-input` | `calls` | `asset:sample.validation` | `statically-supported` | `shared` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
+| `trace-link:sample.validation-to-auth` | `asset:sample.validation` | `calls` | `asset:sample.authorization` | `statically-supported` | `shared` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
+| `trace-link:sample.auth-to-service` | `asset:sample.authorization` | `calls` | `asset:sample.java-service` | `statically-supported` | `shared` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
+| `trace-link:sample.service-to-transaction` | `asset:sample.java-service` | `calls` | `asset:sample.transaction` | `statically-supported` | `shared` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
+| `trace-link:sample.transaction-to-business-commit` | `asset:sample.transaction` | `writes` | `data:sample.business-commit` | `statically-supported` | `sync-optional` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
+| `trace-link:sample.commit-to-http-response` | `data:sample.business-commit` | `supports` | `integration:sample.http-response` | `statically-supported` | `sync-optional` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
+| `trace-link:sample.http-response-to-sync-visible` | `integration:sample.http-response` | `supports` | `claim:sample.sync-visible-result` | `runtime-confirmed` | `sync-optional` | `evidence:sample.runtime-sync-visible` | `context:sample.deployed-runtime` |
+| `trace-link:sample.runtime-to-sync-visible` | `evidence:sample.runtime-sync-visible` | `validates` | `claim:sample.sync-visible-result` | `runtime-confirmed` | `sync-optional` | `evidence:sample.runtime-sync-visible` | `context:sample.deployed-runtime` |
+| `trace-link:sample.transaction-to-atomic-outcome` | `asset:sample.transaction` | `writes` | `data:sample.atomic-business-outbox-commit` | `statically-supported` | `async-optional` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
+| `trace-link:sample.relay-reads-outbox` | `asset:sample.outbox-relay` | `reads` | `data:sample.atomic-business-outbox-commit` | `inferred` | `async-optional` | `evidence:sample.async-candidate` | `context:sample.deployed-runtime` |
+| `trace-link:sample.relay-to-message` | `asset:sample.outbox-relay` | `emits` | `integration:sample.message` | `inferred` | `async-optional` | `evidence:sample.async-candidate` | `context:sample.deployed-runtime` |
+| `trace-link:sample.message-to-consumer` | `integration:sample.message` | `calls` | `asset:sample.consumer-job` | `inferred` | `async-optional` | `evidence:sample.async-candidate` | `context:sample.deployed-runtime` |
+| `trace-link:sample.consumer-to-later-visible` | `asset:sample.consumer-job` | `supports` | `claim:sample.later-visible-result` | `inferred` | `async-optional` | `evidence:sample.async-candidate` | `context:sample.deployed-runtime` |
+| `trace-link:sample.runtime-to-later-visible` | `evidence:sample.runtime-later-visible` | `validates` | `claim:sample.later-visible-result` | `runtime-confirmed` | `async-optional` | `evidence:sample.runtime-later-visible` | `context:sample.deployed-runtime` |
+| `trace-link:sample.atomic-outcome-to-internal` | `data:sample.atomic-business-outbox-commit` | `supports` | `claim:sample.internal-db-path` | `statically-supported` | `async-optional` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
+| `trace-link:sample.source-to-internal` | `evidence:sample.source-structure` | `supports` | `claim:sample.internal-db-path` | `statically-supported` | `async-optional` | `evidence:sample.source-structure` | `context:sample.source-artifact` |
+| `trace-link:sample.async-evidence-to-message` | `evidence:sample.async-candidate` | `supports` | `integration:sample.message` | `observed` | `async-optional` | `evidence:sample.async-candidate` | `context:sample.deployed-runtime` |
 
-所有节点和链接端点均使用 `kind:namespace.qualified-key` 形式的限定稳定 ID；状态只取核心封闭词汇，关系只取核心 `calls`、`writes`、`emits`、`supports` 和 `validates`。新增关系必须先登记方向、语义、版本和校验规则。证据与上下文引用均须在对应注册表精确解析一次，重复定义、空引用和未声明引用都使该链接无效。
+所有节点和链接端点均使用 `kind:namespace.qualified-key` 形式的限定稳定 ID；状态只取核心封闭词汇，关系只取核心 `calls`、`reads`、`writes`、`emits`、`supports` 和 `validates`。`reads` 的规范方向始终是读取者到数据，展示执行数据流时反向遍历，不能为了画出箭头而误写关系。新增关系必须先登记方向、语义、版本和校验规则。证据与上下文引用均须在对应注册表精确解析一次，重复定义、空引用和未声明引用都使该链接无效。
 
 ## 有序工作流
 
