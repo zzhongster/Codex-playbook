@@ -44,6 +44,7 @@ ACCESS_TRACK_DOCUMENTS = {
 }
 STACK_DOCUMENTS = {
     "delphi-desktop": GUIDE_ROOT / "stacks" / "delphi-desktop.md",
+    "java-backends": GUIDE_ROOT / "stacks" / "java-backends.md",
     "web-products": GUIDE_ROOT / "stacks" / "web-products.md",
 }
 LINK_SOURCE_DOCUMENTS = (
@@ -123,6 +124,29 @@ REQUIRED_WEB_SECTIONS = (
     "纵向追踪示例",
     "有序工作流",
     "停止与安全边界",
+)
+REQUIRED_JAVA_SECTIONS = (
+    "构建与依赖图",
+    "模块与启动身份",
+    "框架识别与条件分支",
+    "配置、Profile 与环境优先级",
+    "HTTP/RPC 入口与过滤链",
+    "控制器、服务与仓储边界",
+    "DI、代理、AOP、反射与生成代码",
+    "校验、认证与授权",
+    "事务边界与传播",
+    "持久化、SQL 与迁移",
+    "消息、Outbox 与消费者",
+    "定时任务与异步执行",
+    "缓存与搜索",
+    "异常映射",
+    "重试、幂等与一致性",
+    "仅编译制品与反编译边界",
+    "运行时关联",
+    "证据平面与主张上限",
+    "常见盲区与停止规则",
+    "纵向追踪示例",
+    "有序工作流",
 )
 REQUIRED_ACCESS_TRACK_SECTIONS = (
     "适用条件",
@@ -802,6 +826,233 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "不能取代可见结果自己的独立观察与运行证据",
             trace,
         )
+
+    def assert_java_evidence_planes_remain_distinct(self, document):
+        section = self.section_text(document, "## 证据平面与主张上限")
+        expected_rows = {
+            "源码结构": (
+                "statically-supported",
+                "不证明配置生效、制品已部署或路径已执行",
+            ),
+            "配置解析候选": (
+                "statically-supported",
+                "不证明该值在目标部署生效",
+            ),
+            "部署装配事实": (
+                "observed",
+                "只证明已检查部署元数据中的装配事实，不证明请求经过该路径",
+            ),
+            "已观察运行行为": (
+                "runtime-confirmed",
+                "只限绑定版本、部署、配置、角色、输入和时间窗的场景",
+            ),
+        }
+        observed_rows = {}
+        for line in section.splitlines():
+            match = re.fullmatch(
+                r"\| ([^|]+) \| `([^`]+)` \| [^|]+ \| ([^|]+) \|",
+                line,
+            )
+            if match and match.group(1).strip() in expected_rows:
+                observed_rows[match.group(1).strip()] = (
+                    match.group(2).strip(),
+                    match.group(3).strip(),
+                )
+        self.assertEqual(expected_rows, observed_rows)
+        self.assertIn(
+            "源码结构、配置解析候选、部署装配事实和已观察运行行为必须分别建证据项与主张",
+            section,
+        )
+        self.assertIn(
+            "静态证据不得直接升级为 `runtime-confirmed`",
+            section,
+        )
+
+    def assert_java_framework_topology_is_conditional(self, document):
+        frameworks = self.section_text(document, "## 框架识别与条件分支")
+        for contract in (
+            "Spring Boot、Spring MVC、Jakarta REST、Quarkus、Micronaut 与 Vert.x 都是条件分支",
+            "只为实际发现且证据可定位的框架组件建节点和边",
+            "不得把 Spring、Jakarta、JPA 或消息系统写成必经层",
+        ):
+            self.assertIn(contract, frameworks)
+
+        persistence = self.section_text(document, "## 持久化、SQL 与迁移")
+        self.assertIn(
+            "JPA/Hibernate、MyBatis、JDBC 与动态 SQL 都按实际发现选择",
+            persistence,
+        )
+        messaging = self.section_text(document, "## 消息、Outbox 与消费者")
+        self.assertIn("消息代理、Outbox 和消费者都是可选分支", messaging)
+        workflow = self.section_text(document, "## 有序工作流")
+        self.assertIn("若实际存在消息或任务分支", workflow)
+
+    def assert_java_vertical_example_contract(self, document):
+        trace = self.section_text(document, "## 纵向追踪示例")
+        nodes = self.section_text(trace, "### 节点注册表")
+        node_pattern = re.compile(
+            r"\| `([^`]+)` \| `([^`]+)` \| `([^`]+)` \| ([^|]+) \|"
+        )
+        node_rows = [
+            match.groups()
+            for line in nodes.splitlines()
+            if (match := node_pattern.fullmatch(line))
+        ]
+        self.assertGreaterEqual(len(node_rows), 12)
+
+        stable_id_pattern = re.compile(
+            r"^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+$"
+        )
+        node_ids = set()
+        node_contracts = {}
+        for node_id, node_kind, status, _boundary in node_rows:
+            self.assertRegex(node_id, stable_id_pattern)
+            self.assertIn(status, CLAIM_STATUSES)
+            node_ids.add(node_id)
+            node_contracts[node_id] = (node_kind, status)
+        self.assertEqual(len(node_ids), len(node_rows))
+        self.assertEqual(
+            ("service", "statically-supported"),
+            node_contracts["asset:sample.java-service"],
+        )
+        self.assertEqual(
+            ("internal-claim", "statically-supported"),
+            node_contracts["claim:sample.internal-db-path"],
+        )
+        self.assertEqual(
+            ("visible-claim", "runtime-confirmed"),
+            node_contracts["claim:sample.visible-result"],
+        )
+
+        evidence = self.section_text(trace, "### 证据注册表")
+        evidence_pattern = re.compile(r"\| `([^`]+)` \| [^|]+ \|")
+        evidence_table_rows = [
+            line for line in evidence.splitlines() if line.startswith("| `evidence:")
+        ]
+        evidence_ids = [
+            match.group(1)
+            for line in evidence.splitlines()
+            if (match := evidence_pattern.fullmatch(line))
+        ]
+        self.assertEqual(len(evidence_table_rows), len(evidence_ids))
+        self.assertTrue(evidence_ids)
+        for evidence_id in evidence_ids:
+            self.assertRegex(evidence_id, stable_id_pattern)
+            self.assertTrue(evidence_id.startswith("evidence:"))
+
+        contexts = self.section_text(trace, "### 上下文注册表")
+        context_pattern = re.compile(r"\| `([^`]+)` \| [^|]+ \|")
+        context_table_rows = [
+            line for line in contexts.splitlines() if line.startswith("| `context:")
+        ]
+        context_ids = [
+            match.group(1)
+            for line in contexts.splitlines()
+            if (match := context_pattern.fullmatch(line))
+        ]
+        self.assertEqual(len(context_table_rows), len(context_ids))
+        self.assertTrue(context_ids)
+        for context_id in context_ids:
+            self.assertRegex(context_id, stable_id_pattern)
+            self.assertTrue(context_id.startswith("context:"))
+
+        links = self.section_text(trace, "### 类型化链接")
+        link_pattern = re.compile(
+            r"\| `([^`]+)` \| `([^`]+)` \| `([a-z-]+)` \| `([^`]+)` \| "
+            r"`([^`]+)` \| `(required|optional)` \| `([^`]+)` \| `([^`]+)` \|"
+        )
+        link_table_rows = [
+            line for line in links.splitlines() if line.startswith("| `trace-link:")
+        ]
+        link_rows = [
+            match.groups()
+            for line in links.splitlines()
+            if (match := link_pattern.fullmatch(line))
+        ]
+        self.assertEqual(len(link_table_rows), len(link_rows))
+        self.assertGreaterEqual(len(link_rows), 11)
+        self.assertIn("optional", {row[5] for row in link_rows})
+        for (
+            link_id,
+            source_id,
+            relation,
+            target_id,
+            status,
+            _branch,
+            evidence_references,
+            context_references,
+        ) in link_rows:
+            self.assertRegex(link_id, stable_id_pattern)
+            self.assertIn(source_id, node_ids)
+            self.assertIn(target_id, node_ids)
+            self.assertIn(relation, CORE_RELATION_KINDS)
+            self.assertIn(status, CLAIM_STATUSES)
+            referenced_evidence = [
+                item.strip() for item in evidence_references.split(",") if item.strip()
+            ]
+            referenced_contexts = [
+                item.strip() for item in context_references.split(",") if item.strip()
+            ]
+            self.assertTrue(referenced_evidence)
+            self.assertTrue(referenced_contexts)
+            for evidence_id in referenced_evidence:
+                self.assertRegex(evidence_id, stable_id_pattern)
+                self.assertEqual(
+                    1,
+                    evidence_ids.count(evidence_id),
+                    f"evidence reference must resolve exactly once: {evidence_id}",
+                )
+            for context_id in referenced_contexts:
+                self.assertRegex(context_id, stable_id_pattern)
+                self.assertEqual(
+                    1,
+                    context_ids.count(context_id),
+                    f"context reference must resolve exactly once: {context_id}",
+                )
+
+        expected_links = {
+            ("integration:sample.http-input", "calls", "asset:sample.validation"),
+            ("asset:sample.validation", "calls", "asset:sample.authorization"),
+            ("asset:sample.authorization", "calls", "asset:sample.java-service"),
+            ("asset:sample.java-service", "calls", "asset:sample.transaction"),
+            ("asset:sample.transaction", "writes", "data:sample.db-mutation"),
+            ("asset:sample.java-service", "writes", "data:sample.outbox-row"),
+            ("data:sample.outbox-row", "emits", "integration:sample.message"),
+            ("integration:sample.message", "calls", "asset:sample.consumer-job"),
+            ("asset:sample.consumer-job", "supports", "claim:sample.visible-result"),
+            (
+                "evidence:sample.source-structure",
+                "supports",
+                "claim:sample.internal-db-path",
+            ),
+            (
+                "evidence:sample.runtime-visible",
+                "validates",
+                "claim:sample.visible-result",
+            ),
+        }
+        observed_links = {
+            (source_id, relation, target_id)
+            for (
+                _link_id,
+                source_id,
+                relation,
+                target_id,
+                _status,
+                _branch,
+                _evidence_references,
+                _context_references,
+            ) in link_rows
+        }
+        self.assertTrue(expected_links.issubset(observed_links))
+        self.assertIn(
+            "HTTP 输入 → 校验 → 授权 → 服务 → 事务 → 数据库变更 → "
+            "可选 Outbox/消息 → 消费者/任务 → 可观察结果",
+            trace,
+        )
+        self.assertIn("可选分支缺失时保留缺口且不创建占位边", trace)
+        self.assertIn("可见结果主张与内部实现主张使用不同稳定 ID", trace)
+        self.assertIn("不能由内部链取代可见结果自己的运行证据", trace)
 
     def assert_deterministic_gate_record_schema(self, document):
         gate_records = self.section_text(document, "## 门禁判定记录与 Phase 产物")
@@ -1523,6 +1774,216 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 )
         self.assertIn("立即停止", stop)
         self.assertIn("重新授权", stop)
+
+    def test_java_stack_guide_exists_and_is_linked_from_the_guide_readme(self):
+        guide = self.read_guide()
+        path = STACK_DOCUMENTS["java-backends"]
+        self.assertTrue(path.is_file(), f"missing Java stack guide: {path}")
+        relative_path = path.relative_to(GUIDE_ROOT).as_posix()
+        self.assertIn(f"]({relative_path})", guide)
+
+    def test_java_stack_guide_has_one_proposed_maturity_and_applicability(self):
+        document = self.read_stack_document("java-backends")
+        maturity_declarations = [
+            line.strip()
+            for line in document.splitlines()
+            if line.strip().removeprefix("**").startswith("证据成熟度：")
+        ]
+        self.assertEqual(["**证据成熟度：`proposed`**"], maturity_declarations)
+        self.assert_one_nonblank_applicability_declaration(document)
+        self.assertNotIn("/Users/", document)
+        self.assertNotRegex(document, r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
+
+    def test_java_stack_guide_has_all_substantive_sections(self):
+        document = self.read_stack_document("java-backends")
+        for section_name in REQUIRED_JAVA_SECTIONS:
+            with self.subTest(section=section_name):
+                section = self.section_text(document, f"## {section_name}")
+                substantive_lines = [
+                    line
+                    for line in section.splitlines()[1:]
+                    if line.strip() and not line.startswith("#")
+                ]
+                self.assertGreaterEqual(
+                    len(substantive_lines), 2, f"thin Java section: {section_name}"
+                )
+
+    def test_java_workflow_follows_the_required_evidence_order(self):
+        document = self.read_stack_document("java-backends")
+        workflow = self.section_text(document, "## 有序工作流")
+        steps = [line for line in workflow.splitlines() if re.match(r"^\d+\. ", line)]
+        self.assertEqual(8, len(steps))
+        expected_terms = (
+            ("Maven/Gradle", "构建图", "依赖图"),
+            ("模块", "启动入口", "JAR/WAR", "启动身份"),
+            ("路由", "过滤器/拦截器"),
+            ("控制器", "服务", "仓储"),
+            ("事务边界", "传播"),
+            ("持久化", "数据库"),
+            ("若实际存在消息或任务分支", "消息", "任务"),
+            ("可见结果", "对外契约"),
+        )
+        for step, terms in zip(steps, expected_terms):
+            for term in terms:
+                with self.subTest(step=step, term=term):
+                    self.assertIn(term, step)
+        self.assert_java_evidence_planes_remain_distinct(document)
+
+        overclaim = document.replace(
+            "| 源码结构 | `statically-supported` |",
+            "| 源码结构 | `runtime-confirmed` |",
+        )
+        self.assertNotEqual(document, overclaim)
+        with self.assertRaises(AssertionError):
+            self.assert_java_evidence_planes_remain_distinct(overclaim)
+
+    def test_java_frameworks_and_topology_are_conditional_and_mutation_guarded(self):
+        document = self.read_stack_document("java-backends")
+        self.assert_java_framework_topology_is_conditional(document)
+        mutations = {
+            "forces Spring JPA and messaging": document.replace(
+                "不得把 Spring、Jakarta、JPA 或消息系统写成必经层",
+                "所有 Java 后端都按 Spring、JPA 和消息系统建立必经层",
+            ),
+            "forces persistence framework": document.replace(
+                "JPA/Hibernate、MyBatis、JDBC 与动态 SQL 都按实际发现选择",
+                "所有 Java 后端都使用 JPA/Hibernate",
+            ),
+            "forces messaging": document.replace(
+                "消息代理、Outbox 和消费者都是可选分支",
+                "消息代理、Outbox 和消费者都是必经分支",
+            ),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                self.assertNotEqual(document, mutation)
+                with self.assertRaises(AssertionError):
+                    self.assert_java_framework_topology_is_conditional(mutation)
+
+    def test_java_runtime_semantics_remain_evidence_questions(self):
+        document = self.read_stack_document("java-backends")
+        proxy = self.section_text(document, "## DI、代理、AOP、反射与生成代码")
+        for contract in (
+            "只有证据确认使用相应代理机制时，才提出代理拦截与 self-invocation 问题",
+            "普通对象或非代理调用不得套用该结论",
+            "注解",
+            "反射",
+            "自动配置",
+            "生成代码",
+        ):
+            self.assertIn(contract, proxy)
+
+        config = self.section_text(document, "## 配置、Profile 与环境优先级")
+        self.assertIn("配置优先级必须按每个部署实测", config)
+        self.assertIn("不得假定一条跨框架、跨版本的固定优先级", config)
+
+        persistence = self.section_text(document, "## 持久化、SQL 与迁移")
+        for question in ("lazy/eager", "N+1", "证据问题"):
+            self.assertIn(question, persistence)
+
+        transactions = self.section_text(document, "## 事务边界与传播")
+        self.assertIn("事务传播不得仅凭注解名称推定", transactions)
+        self.assertIn("事务不会按假设跨越异步边界", transactions)
+
+        messaging = self.section_text(document, "## 消息、Outbox 与消费者")
+        self.assertIn(
+            "不能仅因依赖中出现消息库就推定重试、顺序或投递语义",
+            messaging,
+        )
+
+    def test_java_compiled_only_evidence_records_identity_and_claim_ceiling(self):
+        document = self.read_stack_document("java-backends")
+        compiled = self.section_text(document, "## 仅编译制品与反编译边界")
+        for field in (
+            "制品 SHA-256",
+            "Java/class 版本",
+            "依赖与 package 元数据",
+            "签名可用性",
+            "调试符号可用性",
+            "反编译器与工具版本",
+            "synthetic",
+            "bridge",
+            "生成代码",
+            "名称缺失",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, compiled)
+        self.assertIn("反编译结果不是原始源码", compiled)
+        self.assertIn("不得据此解释开发者意图", compiled)
+
+    def test_java_runtime_log_and_database_work_are_separately_authorized_and_safe(self):
+        document = self.read_stack_document("java-backends")
+        runtime = self.section_text(document, "## 运行时关联")
+        for contract in (
+            "运行、日志与数据库操作必须分别授权",
+            "绑定当前 `ART-G0-AUTH`",
+            "`verdict` 为 `pass`",
+            "只读为默认",
+        ):
+            self.assertIn(contract, runtime)
+
+        stop = self.section_text(document, "## 常见盲区与停止规则")
+        for contract in (
+            "不得提取凭据或秘密",
+            "不得对生产环境执行破坏性写入",
+            "授权、版本或环境不匹配",
+            "敏感信息泄露",
+            "立即停止",
+            "重新授权",
+        ):
+            self.assertIn(contract, stop)
+
+    def test_java_vertical_trace_resolves_graph_evidence_and_context(self):
+        document = self.read_stack_document("java-backends")
+        self.assert_java_vertical_example_contract(document)
+        mutations = {
+            "unqualified endpoint": document.replace(
+                "integration:sample.http-input",
+                "HTTP-INPUT-1",
+            ),
+            "unregistered relation": document.replace(
+                "| `trace-link:sample.http-to-validation` | "
+                "`integration:sample.http-input` | `calls` |",
+                "| `trace-link:sample.http-to-validation` | "
+                "`integration:sample.http-input` | `dispatches-to` |",
+            ),
+            "static service overclaim": document.replace(
+                "| `asset:sample.java-service` | `service` | "
+                "`statically-supported` |",
+                "| `asset:sample.java-service` | `service` | "
+                "`runtime-confirmed` |",
+            ),
+            "missing evidence": document.replace(
+                "| `trace-link:sample.http-to-validation` | "
+                "`integration:sample.http-input` | `calls` | "
+                "`asset:sample.validation` | `statically-supported` | "
+                "`required` | `evidence:sample.source-structure` | "
+                "`context:sample.source-artifact` |",
+                "| `trace-link:sample.http-to-validation` | "
+                "`integration:sample.http-input` | `calls` | "
+                "`asset:sample.validation` | `statically-supported` | "
+                "`required` |  | `context:sample.source-artifact` |",
+            ),
+            "undeclared evidence": document.replace(
+                "`evidence:sample.source-structure` | "
+                "`context:sample.source-artifact` |",
+                "`evidence:sample.missing-source` | "
+                "`context:sample.source-artifact` |",
+                1,
+            ),
+            "undeclared context": document.replace(
+                "`evidence:sample.source-structure` | "
+                "`context:sample.source-artifact` |",
+                "`evidence:sample.source-structure` | "
+                "`context:sample.missing-source` |",
+                1,
+            ),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                self.assertNotEqual(document, mutation)
+                with self.assertRaises(AssertionError):
+                    self.assert_java_vertical_example_contract(mutation)
 
     def test_access_tracks_have_the_exact_substantive_section_contract(self):
         maturity_pattern = re.compile(r"^\*\*证据成熟度：`([^`]+)`\*\*$")
