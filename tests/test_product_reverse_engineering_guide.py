@@ -652,17 +652,22 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         schedule_ids = []
         schedule_outputs = set()
         for sequence, step in enumerate(schedule, start=1):
+            expected_step_fields = {
+                "sequence",
+                "step_id",
+                "depends_on",
+                "time_window",
+                "activity",
+                "inputs",
+                "outputs",
+                "gate_effect",
+            }
+            if "conditional_inputs" in step:
+                self.assertEqual("full-program", expected_profile)
+                self.assertEqual("wave-8-delta-calibration", step["step_id"])
+                expected_step_fields.add("conditional_inputs")
             self.assertEqual(
-                {
-                    "sequence",
-                    "step_id",
-                    "depends_on",
-                    "time_window",
-                    "activity",
-                    "inputs",
-                    "outputs",
-                    "gate_effect",
-                },
+                expected_step_fields,
                 set(step),
             )
             self.assertEqual(sequence, step["sequence"])
@@ -851,6 +856,9 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "artifact_dag",
                 "terminal_sequence",
                 "selected_goal",
+                "selected_goal_binding",
+                "phase9_evidence_input",
+                "phase9_branch_selector",
                 "phase9_revalidation",
                 "phase9_required_outputs",
             },
@@ -940,6 +948,20 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "competitor-research": "ART-P8-COMPETITOR",
         }
         self.assertIn(controls["selected_goal"], expected_purpose_artifacts)
+        selected_goal_binding = controls["selected_goal_binding"]
+        self.assertEqual(
+            {
+                "artifact_id": "ART-P0-BRIEF",
+                "artifact_field": "approved_primary_goal",
+                "approved_primary_goal": "rewrite",
+                "artifact_hash_required": True,
+                "binding_rule": "selected_goal-equals-approved-primary-goal",
+            },
+            selected_goal_binding,
+        )
+        self.assertEqual(
+            selected_goal_binding["approved_primary_goal"], controls["selected_goal"]
+        )
         purpose_artifact_ids = set()
         for purpose, expected_artifact in expected_purpose_artifacts.items():
             branch = purpose_outputs[purpose]
@@ -964,6 +986,96 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.assertTrue(branch["difference_map"])
             purpose_artifact_ids.add(branch["output_artifact"])
         self.assertEqual(5, len(purpose_artifact_ids))
+
+        phase9_evidence_input = controls["phase9_evidence_input"]
+        self.assertEqual(
+            {
+                "artifact_id",
+                "immutable",
+                "required_fields",
+                "hash_algorithm",
+                "authorization_identity",
+            },
+            set(phase9_evidence_input),
+        )
+        self.assertEqual(
+            "ART-P9-EVIDENCE-INPUT", phase9_evidence_input["artifact_id"]
+        )
+        self.assertIs(phase9_evidence_input["immutable"], True)
+        self.assertEqual(
+            {"version_id", "scope_ids", "content_hash", "authorization_identity"},
+            set(phase9_evidence_input["required_fields"]),
+        )
+        self.assertEqual("SHA-256", phase9_evidence_input["hash_algorithm"])
+        self.assertEqual(
+            {
+                "authorization_artifact_id": "ART-P0-AUTH",
+                "required_fields": [
+                    "authorization_artifact_id",
+                    "authorization_artifact_hash",
+                    "authorized_scope_ids",
+                ],
+            },
+            phase9_evidence_input["authorization_identity"],
+        )
+
+        phase9_branch_selector = controls["phase9_branch_selector"]
+        self.assertEqual(
+            {"artifact_id", "selected_branch", "exactly_one", "branches"},
+            set(phase9_branch_selector),
+        )
+        self.assertEqual(
+            "artifact:program.phase9-branch-selection.v1",
+            phase9_branch_selector["artifact_id"],
+        )
+        self.assertIs(phase9_branch_selector["exactly_one"], True)
+        self.assertIn(
+            phase9_branch_selector["selected_branch"],
+            {"runtime", "approved-static"},
+        )
+        phase9_branches = phase9_branch_selector["branches"]
+        self.assertEqual({"runtime", "approved-static"}, set(phase9_branches))
+        selected_phase9_branch = phase9_branch_selector["selected_branch"]
+        self.assertEqual(
+            {
+                "activation": (
+                    "selected" if selected_phase9_branch == "runtime" else "excluded"
+                ),
+                "required_inputs": ["ART-P0-AUTH", "ART-G0-AUTH"],
+                "current_authorization_required": True,
+                "current_g0_required": True,
+                "g0_required_verdict": "pass",
+                "per_action_authorization": True,
+            },
+            phase9_branches["runtime"],
+        )
+        self.assertEqual(
+            {
+                "activation": (
+                    "selected"
+                    if selected_phase9_branch == "approved-static"
+                    else "excluded"
+                ),
+                "required_inputs": [
+                    "ART-P5-STATIC",
+                    "ART-P5-RUNTIME-GAP",
+                    "ART-P5-STATIC-ACCEPTANCE",
+                    "ART-G5-RUNTIME",
+                ],
+                "valid_acceptance_decision_required": True,
+                "claim_ceiling": "statically-supported",
+                "forbidden_status": "runtime-confirmed",
+            },
+            phase9_branches["approved-static"],
+        )
+        active_phase9_branches = [
+            branch_id
+            for branch_id, branch in phase9_branches.items()
+            if branch["activation"] == "selected"
+        ]
+        self.assertEqual(
+            [phase9_branch_selector["selected_branch"]], active_phase9_branches
+        )
 
         phase9 = controls["phase9_revalidation"]
         self.assertEqual({"runtime", "approved-static", "learning"}, set(phase9))
@@ -1065,7 +1177,19 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             set(dag),
         )
         external_inputs = set(dag["external_inputs"])
-        self.assertTrue({"ART-P0-AUTH", "ART-P1-BASELINE"}.issubset(external_inputs))
+        self.assertTrue(
+            {
+                "ART-P0-AUTH",
+                "ART-P0-BRIEF",
+                "ART-P1-BASELINE",
+                "ART-P9-EVIDENCE-INPUT",
+                "ART-G0-AUTH",
+                "ART-P5-STATIC",
+                "ART-P5-RUNTIME-GAP",
+                "ART-P5-STATIC-ACCEPTANCE",
+                "ART-G5-RUNTIME",
+            }.issubset(external_inputs)
+        )
         self.assertEqual(len(dag["external_inputs"]), len(external_inputs))
 
         nodes = dag["artifact_versions"]
@@ -1096,6 +1220,16 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                     "activation",
                     "content_mode",
                 }
+            if (
+                node["artifact_id"]
+                == "artifact:program.phase9-branch-selection.v1"
+            ):
+                node_fields |= {"selected_branch", "conditional_input_ids"}
+            if node["artifact_id"] in {
+                "artifact:program.gate-ledger.phase9-pending.v07",
+                "artifact:program.gate-ledger.phase9-verdict.v08",
+            }:
+                node_fields.add("gate_state")
             self.assertEqual(node_fields, set(node))
             self.assertEqual(sequence, node["sequence"])
             artifact_id = node["artifact_id"]
@@ -1145,6 +1279,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertEqual(selected_purpose_artifact, selected_nodes[0]["artifact_id"])
         for purpose, artifact_id in expected_purpose_artifacts.items():
             node = purpose_nodes[artifact_id]
+            self.assertIn("ART-P0-BRIEF", node["inputs"])
             self.assertEqual(
                 f"selected_goal={purpose}", node["activation_condition"]
             )
@@ -1184,6 +1319,49 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             available_schedule_inputs.update(step["outputs"])
         self.assertEqual(set(nodes_by_id), set(schedule_outputs))
         self.assertEqual(len(schedule_outputs), len(set(schedule_outputs)))
+
+        phase8_schedule = next(
+            step for step in schedule if step["step_id"] == "wave-7-freeze-delivery"
+        )
+        self.assertIn("ART-P0-BRIEF", phase8_schedule["inputs"])
+
+        phase9_schedule = next(
+            step for step in schedule if step["step_id"] == "wave-8-delta-calibration"
+        )
+        conditional_inputs = phase9_schedule["conditional_inputs"]
+        self.assertEqual(
+            {"selector_artifact", "selected_branch", "branch_inputs"},
+            set(conditional_inputs),
+        )
+        self.assertEqual(
+            phase9_branch_selector["artifact_id"],
+            conditional_inputs["selector_artifact"],
+        )
+        self.assertEqual(
+            phase9_branch_selector["selected_branch"],
+            conditional_inputs["selected_branch"],
+        )
+        self.assertEqual(
+            {
+                branch_id: branch["required_inputs"]
+                for branch_id, branch in phase9_branches.items()
+            },
+            conditional_inputs["branch_inputs"],
+        )
+        active_phase9_inputs = set(
+            phase9_branches[phase9_branch_selector["selected_branch"]][
+                "required_inputs"
+            ]
+        )
+        self.assertEqual(
+            {
+                "ART-P8-FREEZE",
+                "artifact:program.profile-exit-verification.phase8.v1",
+                "ART-P9-EVIDENCE-INPUT",
+                *active_phase9_inputs,
+            },
+            set(phase9_schedule["inputs"]),
+        )
         for node in nodes:
             self.assertIn(
                 node["artifact_id"],
@@ -1276,11 +1454,13 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         phase9_order = [
             "ART-P9-DELTA",
             "artifact:program.impact-selection.phase9.v1",
+            "artifact:program.gate-ledger.phase9-pending.v07",
+            "artifact:program.phase9-branch-selection.v1",
             "ART-P9-REVALIDATION",
+            "artifact:program.gate-ledger.phase9-verdict.v08",
             "ART-P9-CALIBRATION",
             "ART-P9-LEARNING",
             "artifact:program.delta-ledger.phase9.v02",
-            "artifact:program.gate-ledger.reopened.v07",
             "artifact:program.phase-hash-index.wave8.v08",
             "artifact:program.phase-summary-index.wave8.v08",
         ]
@@ -1292,14 +1472,56 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 if node["terminal_stage"] == "phase9-delta"
             ],
         )
+        delta_node = nodes_by_id["ART-P9-DELTA"]
+        self.assertTrue(
+            {"ART-P8-FREEZE", "ART-P9-EVIDENCE-INPUT"}.issubset(
+                set(delta_node["inputs"])
+            )
+        )
         self.assertIn("ART-P9-DELTA", nodes_by_id[phase9_order[1]]["inputs"])
+        pending_gate = nodes_by_id[
+            "artifact:program.gate-ledger.phase9-pending.v07"
+        ]
+        self.assertEqual("pending", pending_gate["gate_state"])
+        self.assertIn("artifact:program.impact-selection.phase9.v1", pending_gate["inputs"])
+        selector_node = nodes_by_id[phase9_branch_selector["artifact_id"]]
+        self.assertEqual(
+            phase9_branch_selector["selected_branch"],
+            selector_node["selected_branch"],
+        )
+        self.assertEqual(
+            active_phase9_inputs, set(selector_node["conditional_input_ids"])
+        )
+        self.assertEqual(
+            {
+                "ART-P9-EVIDENCE-INPUT",
+                "artifact:program.gate-ledger.phase9-pending.v07",
+                *active_phase9_inputs,
+            },
+            set(selector_node["inputs"]),
+        )
         self.assertTrue(
             {
                 "ART-P9-DELTA",
                 "artifact:program.impact-selection.phase9.v1",
-                "ART-P0-AUTH",
+                "artifact:program.gate-ledger.phase9-pending.v07",
+                "artifact:program.phase9-branch-selection.v1",
+                "ART-P9-EVIDENCE-INPUT",
+                *active_phase9_inputs,
             }.issubset(set(nodes_by_id["ART-P9-REVALIDATION"]["inputs"]))
         )
+        verdict_gate = nodes_by_id[
+            "artifact:program.gate-ledger.phase9-verdict.v08"
+        ]
+        self.assertEqual("post-revalidation-verdict", verdict_gate["gate_state"])
+        self.assertTrue(
+            {
+                "artifact:program.gate-ledger.phase9-pending.v07",
+                "ART-P9-REVALIDATION",
+            }.issubset(set(verdict_gate["inputs"]))
+        )
+        self.assertLess(pending_gate["sequence"], nodes_by_id["ART-P9-REVALIDATION"]["sequence"])
+        self.assertLess(nodes_by_id["ART-P9-REVALIDATION"]["sequence"], verdict_gate["sequence"])
         self.assertIn(
             "ART-P9-REVALIDATION", nodes_by_id["ART-P9-CALIBRATION"]["inputs"]
         )
@@ -1310,7 +1532,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertTrue(
             all(
                 nodes_by_id[artifact_id]["sequence"] > learning_sequence
-                for artifact_id in phase9_order[5:]
+                for artifact_id in phase9_order[8:]
             )
         )
 
@@ -8267,6 +8489,54 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         }
         self.assertIn("oversized-cluster", escalation_triggers)
 
+    def test_full_program_phase9_static_branch_is_executable(self):
+        metadata = self.parse_yaml_metadata(self.read_operating_profile("full-program"))
+        controls = copy.deepcopy(metadata["full_program_controls"])
+        schedule = copy.deepcopy(metadata["schedule"])
+        selector = controls["phase9_branch_selector"]
+        selector["selected_branch"] = "approved-static"
+        selector["branches"]["runtime"]["activation"] = "excluded"
+        selector["branches"]["approved-static"]["activation"] = "selected"
+        active_inputs = selector["branches"]["approved-static"]["required_inputs"]
+
+        phase9_schedule = next(
+            step
+            for step in schedule
+            if step["step_id"] == "wave-8-delta-calibration"
+        )
+        phase9_schedule["conditional_inputs"]["selected_branch"] = "approved-static"
+        phase9_schedule["inputs"] = [
+            "ART-P8-FREEZE",
+            "artifact:program.profile-exit-verification.phase8.v1",
+            "ART-P9-EVIDENCE-INPUT",
+            *active_inputs,
+        ]
+
+        selector_node = next(
+            node
+            for node in controls["artifact_dag"]["artifact_versions"]
+            if node["artifact_id"] == selector["artifact_id"]
+        )
+        selector_node["selected_branch"] = "approved-static"
+        selector_node["conditional_input_ids"] = list(active_inputs)
+        selector_node["inputs"] = [
+            "ART-P9-EVIDENCE-INPUT",
+            "artifact:program.gate-ledger.phase9-pending.v07",
+            *active_inputs,
+        ]
+        revalidation = next(
+            node
+            for node in controls["artifact_dag"]["artifact_versions"]
+            if node["artifact_id"] == "ART-P9-REVALIDATION"
+        )
+        revalidation["inputs"] = [
+            item
+            for item in revalidation["inputs"]
+            if item not in {"ART-P0-AUTH", "ART-G0-AUTH"}
+        ] + list(active_inputs)
+
+        self.assert_full_program_controls(controls, schedule)
+
     def test_operating_profile_contract_rejects_safety_completeness_and_freeze_mutations(self):
         one_day = self.parse_yaml_metadata(
             self.read_operating_profile("one-day-triage")
@@ -8477,6 +8747,127 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 zero_active_purposes, full_program["schedule"]
             )
 
+        purpose_switch_disagrees_with_phase0 = copy.deepcopy(
+            full_program["full_program_controls"]
+        )
+        purpose_switch_disagrees_with_phase0["selected_goal"] = "migration"
+        purpose_nodes = {
+            node["artifact_id"]: node
+            for node in purpose_switch_disagrees_with_phase0["artifact_dag"][
+                "artifact_versions"
+            ]
+            if node["artifact_id"]
+            in {
+                "ART-P8-REWRITE",
+                "ART-P8-MIGRATION",
+                "ART-P8-REPLACEMENT",
+                "ART-P8-DUE-DILIGENCE",
+                "ART-P8-COMPETITOR",
+            }
+        }
+        purpose_nodes["ART-P8-REWRITE"]["activation"] = "excluded"
+        purpose_nodes["ART-P8-REWRITE"]["content_mode"] = "exclusion-map-only"
+        purpose_nodes["ART-P8-MIGRATION"]["activation"] = "selected"
+        purpose_nodes["ART-P8-MIGRATION"]["content_mode"] = "purpose-content"
+        for artifact_id in (
+            "ART-P8-RELEASE",
+            "ART-P8-APPROVAL",
+            "ART-G7-RELEASE",
+            "ART-P8-ROOT-SUMMARY",
+        ):
+            node = next(
+                candidate
+                for candidate in purpose_switch_disagrees_with_phase0[
+                    "artifact_dag"
+                ]["artifact_versions"]
+                if candidate["artifact_id"] == artifact_id
+            )
+            node["inputs"] = [
+                "ART-P8-MIGRATION" if item == "ART-P8-REWRITE" else item
+                for item in node["inputs"]
+            ]
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                purpose_switch_disagrees_with_phase0, full_program["schedule"]
+            )
+
+        phase9_evidence_without_hash = copy.deepcopy(
+            full_program["full_program_controls"]
+        )
+        phase9_evidence_without_hash["phase9_evidence_input"][
+            "required_fields"
+        ].remove("content_hash")
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                phase9_evidence_without_hash, full_program["schedule"]
+            )
+
+        delta_without_new_evidence = copy.deepcopy(
+            full_program["full_program_controls"]
+        )
+        delta_node = next(
+            node
+            for node in delta_without_new_evidence["artifact_dag"][
+                "artifact_versions"
+            ]
+            if node["artifact_id"] == "ART-P9-DELTA"
+        )
+        delta_node["inputs"].remove("ART-P9-EVIDENCE-INPUT")
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                delta_without_new_evidence, full_program["schedule"]
+            )
+
+        stale_runtime_g0 = copy.deepcopy(full_program["full_program_controls"])
+        stale_runtime_g0["phase9_branch_selector"]["branches"]["runtime"][
+            "g0_required_verdict"
+        ] = "pending"
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(stale_runtime_g0, full_program["schedule"])
+
+        invalid_static_acceptance = copy.deepcopy(
+            full_program["full_program_controls"]
+        )
+        invalid_static_acceptance["phase9_branch_selector"]["branches"][
+            "approved-static"
+        ]["valid_acceptance_decision_required"] = False
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                invalid_static_acceptance, full_program["schedule"]
+            )
+
+        multiple_phase9_branches = copy.deepcopy(
+            full_program["full_program_controls"]
+        )
+        multiple_phase9_branches["phase9_branch_selector"]["branches"][
+            "approved-static"
+        ]["activation"] = "selected"
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                multiple_phase9_branches, full_program["schedule"]
+            )
+
+        zero_phase9_branches = copy.deepcopy(full_program["full_program_controls"])
+        zero_phase9_branches["phase9_branch_selector"]["branches"]["runtime"][
+            "activation"
+        ] = "excluded"
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                zero_phase9_branches, full_program["schedule"]
+            )
+
+        schedule_branch_input_mismatch = copy.deepcopy(full_program["schedule"])
+        phase9_schedule = next(
+            step
+            for step in schedule_branch_input_mismatch
+            if step["step_id"] == "wave-8-delta-calibration"
+        )
+        phase9_schedule["inputs"].remove("ART-G0-AUTH")
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                full_program["full_program_controls"], schedule_branch_input_mismatch
+            )
+
         phase9_without_impact_edge = copy.deepcopy(
             full_program["full_program_controls"]
         )
@@ -8493,6 +8884,55 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.assert_full_program_controls(
                 phase9_without_impact_edge, full_program["schedule"]
+            )
+
+        revalidation_before_pending_gate = copy.deepcopy(
+            full_program["full_program_controls"]
+        )
+        phase9_nodes = revalidation_before_pending_gate["artifact_dag"][
+            "artifact_versions"
+        ]
+        pending_index = next(
+            index
+            for index, node in enumerate(phase9_nodes)
+            if node["artifact_id"]
+            == "artifact:program.gate-ledger.phase9-pending.v07"
+        )
+        revalidation_index = next(
+            index
+            for index, node in enumerate(phase9_nodes)
+            if node["artifact_id"] == "ART-P9-REVALIDATION"
+        )
+        phase9_nodes[pending_index], phase9_nodes[revalidation_index] = (
+            phase9_nodes[revalidation_index],
+            phase9_nodes[pending_index],
+        )
+        premature_revalidation = phase9_nodes[pending_index]
+        premature_revalidation["inputs"].remove(
+            "artifact:program.gate-ledger.phase9-pending.v07"
+        )
+        for sequence, node in enumerate(phase9_nodes, start=1):
+            node["sequence"] = sequence
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                revalidation_before_pending_gate, full_program["schedule"]
+            )
+
+        pending_gate_with_premature_verdict = copy.deepcopy(
+            full_program["full_program_controls"]
+        )
+        pending_gate = next(
+            node
+            for node in pending_gate_with_premature_verdict["artifact_dag"][
+                "artifact_versions"
+            ]
+            if node["artifact_id"]
+            == "artifact:program.gate-ledger.phase9-pending.v07"
+        )
+        pending_gate["gate_state"] = "pass"
+        with self.assertRaises(AssertionError):
+            self.assert_full_program_controls(
+                pending_gate_with_premature_verdict, full_program["schedule"]
             )
 
         phase9_without_calibration_schedule = copy.deepcopy(full_program["schedule"])
