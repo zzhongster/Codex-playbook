@@ -4,25 +4,31 @@
 record_id: "REPLACE_WITH_QUALIFIED_CLAIM_EVIDENCE_ASSOCIATION_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"
 scope_or_module: "REPLACE_WITH_QUALIFIED_SCOPE_OR_MODULE_ID"
-status: "REPLACE_WITH_RECORD_STATUS"
-evidence_references: []
+status: "draft"
+evidence_references:
+  - "evidence:template.replace-me"
 owner: "REPLACE_WITH_NAMED_HUMAN_OWNER"
 validation_method: "REPLACE_WITH_CLAIM_VALIDATION_METHOD"
 last_updated: "YYYY-MM-DD"
-claim_id: "REPLACE_WITH_QUALIFIED_CLAIM_ID"
+claim_id: "claim:template.replace-me"
 claim_statement: "REPLACE_WITH_ONE_PRECISE_FALSIFIABLE_PRODUCT_STATEMENT"
-claim_status: "REPLACE_WITH_CLAIM_STATUS"
-confidence: "REPLACE_WITH_LOW_MEDIUM_OR_HIGH"
+claim_status: "inferred"
+confidence: "low"
 confidence_rationale: "REPLACE_WITH_BOUNDARY_SPECIFIC_RATIONALE"
-supporting_evidence_references: []
+supporting_evidence_references:
+  - "evidence:template.replace-me"
 contradicting_evidence_references: []
-evidence_method_entries:
-  - evidence_id: "REPLACE_WITH_QUALIFIED_EVIDENCE_ID"
-    method_id: "REPLACE_WITH_QUALIFIED_METHOD_ID"
+method_definitions:
+  - method_id: "method:template.replace-me"
     method_maturity: "proposed"
+evidence_method_entries:
+  - evidence_id: "evidence:template.replace-me"
+    method_id: "method:template.replace-me"
 ```
 
-顶层 `status` 是主张—证据关联记录的生命周期状态；产品事实使用独立的 `claim_id`、`claim_status`、`confidence` 与支持/反驳证据引用。`evidence_method_entries[].method_maturity` 只评价对应 `method_id`，不评价整条产品主张。
+顶层 `status` 是主张—证据关联记录的生命周期状态；产品事实使用独立的 `claim_id`、`claim_status`、`confidence` 与支持/反驳证据引用。`method_definitions[].method_maturity` 只评价对应方法；evidence—method 映射必须同时解析到本记录声明的 ID，且不评价整条产品主张。
+
+`template.replace-me` 仅演示引用闭合；发布前必须替换 claim、evidence 与 method ID，或删除相应关联，不能把示例命名空间当作项目证据发布。
 
 一个证据项不等于一条产品主张。支持和反驳证据必须分列，并用类型化链接连接；不要把来源描述、事实陈述、解释和方法成熟度压成一个字段。
 

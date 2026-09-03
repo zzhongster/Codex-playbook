@@ -4,31 +4,159 @@
 record_id: "REPLACE_WITH_QUALIFIED_COVERAGE_OR_FREEZE_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"
 scope_or_module: "REPLACE_WITH_QUALIFIED_SCOPE_OR_MODULE_ID"
-status: "REPLACE_WITH_RECORD_STATUS"
-evidence_references: []
+status: "draft"
+evidence_references:
+  - "evidence:template.replace-me"
 owner: "REPLACE_WITH_NAMED_HUMAN_OWNER"
 validation_method: "REPLACE_WITH_DETERMINISTIC_REBUILD_AND_REVIEW_METHOD"
 last_updated: "YYYY-MM-DD"
-atomic_claims:
-  - claim_id: "REPLACE_WITH_QUALIFIED_CLAIM_ID"
-    statement: "REPLACE_WITH_ONE_PRECISE_COVERAGE_OR_FREEZE_FACT"
-    status: "REPLACE_WITH_CLAIM_STATUS"
-    confidence: "REPLACE_WITH_LOW_MEDIUM_OR_HIGH"
-    evidence_references: []
-evidence_method_entries:
-  - evidence_id: "REPLACE_WITH_QUALIFIED_EVIDENCE_ID"
-    method_id: "REPLACE_WITH_QUALIFIED_METHOD_ID"
+claim_references: []
+method_definitions:
+  - method_id: "method:template.replace-me"
     method_maturity: "proposed"
+evidence_method_entries:
+  - evidence_id: "evidence:template.replace-me"
+    method_id: "method:template.replace-me"
 denominator_version: "REPLACE_WITH_FROZEN_DENOMINATOR_VERSION"
 calculation_rule_version: "REPLACE_WITH_CALCULATION_RULE_VERSION"
-gate_record_references: []
 input_hashes: []
 output_allow_list_and_hashes: []
+coverage_dimensions:
+  structure:
+    denominator: 0
+    covered: 0
+    unknown: 0
+    conflicting: 0
+    excluded: 0
+    risk_counts: {P0: 0, P1: 0, P2: 0}
+  product:
+    denominator: 0
+    covered: 0
+    unknown: 0
+    conflicting: 0
+    excluded: 0
+    risk_counts: {P0: 0, P1: 0, P2: 0}
+  semantic:
+    denominator: 0
+    covered: 0
+    unknown: 0
+    conflicting: 0
+    excluded: 0
+    risk_counts: {P0: 0, P1: 0, P2: 0}
+  runtime:
+    denominator: 0
+    covered: 0
+    unknown: 0
+    conflicting: 0
+    excluded: 0
+    risk_counts: {P0: 0, P1: 0, P2: 0}
+  data:
+    denominator: 0
+    covered: 0
+    unknown: 0
+    conflicting: 0
+    excluded: 0
+    risk_counts: {P0: 0, P1: 0, P2: 0}
+  permission:
+    denominator: 0
+    covered: 0
+    unknown: 0
+    conflicting: 0
+    excluded: 0
+    risk_counts: {P0: 0, P1: 0, P2: 0}
+  integration:
+    denominator: 0
+    covered: 0
+    unknown: 0
+    conflicting: 0
+    excluded: 0
+    risk_counts: {P0: 0, P1: 0, P2: 0}
+  non-functional:
+    denominator: 0
+    covered: 0
+    unknown: 0
+    conflicting: 0
+    excluded: 0
+    risk_counts: {P0: 0, P1: 0, P2: 0}
+  trace:
+    denominator: 0
+    covered: 0
+    unknown: 0
+    conflicting: 0
+    excluded: 0
+    risk_counts: {P0: 0, P1: 0, P2: 0}
+gates:
+  G0:
+    gate_record_reference:
+      id: "REPLACE_WITH_ART_G0_AUTH_ID"
+      sha256: "REPLACE_WITH_SHA256"
+    verdict: "pending"
+    reviewer: "REPLACE_WITH_REVIEW_OWNER"
+    decided_at: null
+    evidence_references: []
+  G1:
+    gate_record_reference:
+      id: "REPLACE_WITH_ART_G1_BASELINE_ID"
+      sha256: "REPLACE_WITH_SHA256"
+    verdict: "pending"
+    reviewer: "REPLACE_WITH_REVIEW_OWNER"
+    decided_at: null
+    evidence_references: []
+  G2:
+    gate_record_reference:
+      id: "REPLACE_WITH_ART_G2_TECHNICAL_ID"
+      sha256: "REPLACE_WITH_SHA256"
+    verdict: "pending"
+    reviewer: "REPLACE_WITH_REVIEW_OWNER"
+    decided_at: null
+    evidence_references: []
+  G3:
+    gate_record_reference:
+      id: "REPLACE_WITH_ART_G3_PRODUCT_TRACE_ID"
+      sha256: "REPLACE_WITH_SHA256"
+    verdict: "pending"
+    reviewer: "REPLACE_WITH_REVIEW_OWNER"
+    decided_at: null
+    evidence_references: []
+  G4:
+    gate_record_reference:
+      id: "REPLACE_WITH_ART_G4_SEMANTICS_ID"
+      sha256: "REPLACE_WITH_SHA256"
+    verdict: "pending"
+    reviewer: "REPLACE_WITH_REVIEW_OWNER"
+    decided_at: null
+    evidence_references: []
+  G5:
+    gate_record_reference:
+      id: "REPLACE_WITH_ART_G5_VALIDATION_ID"
+      sha256: "REPLACE_WITH_SHA256"
+    verdict: "pending"
+    reviewer: "REPLACE_WITH_REVIEW_OWNER"
+    decided_at: null
+    evidence_references: []
+  G6:
+    gate_record_reference:
+      id: "REPLACE_WITH_ART_G6_AUDIT_ID"
+      sha256: "REPLACE_WITH_SHA256"
+    verdict: "pending"
+    reviewer: "REPLACE_WITH_REVIEW_OWNER"
+    decided_at: null
+    evidence_references: []
+  G7:
+    gate_record_reference:
+      id: "REPLACE_WITH_ART_G7_RELEASE_ID"
+      sha256: "REPLACE_WITH_SHA256"
+    verdict: "pending"
+    reviewer: "REPLACE_WITH_REVIEW_OWNER"
+    decided_at: null
+    evidence_references: []
 ```
 
-方法成熟度只评价取证、建模或验证方法及其证据基础，不评价目标产品事实；产品主张必须另用 `status`、`confidence` 和 `evidence_references`。
+方法成熟度只评价取证、建模或验证方法及其证据基础，不评价目标产品事实；产品主张必须在主张—证据记录中使用 `claim_status`、`confidence` 和支持/反驳证据引用。
 
-顶层 `status` 是本记录的生命周期状态；产品事实只写入 `atomic_claims`。`evidence_method_entries[].method_maturity` 只评价对应 `method_id`，不得提升关联主张。
+顶层 `status` 是本记录的生命周期状态；这里只保存 `claim_references`，覆盖与冻结事实真值只在主张—证据记录维护。`method_definitions[].method_maturity` 只评价对应方法，映射必须同时解析到本记录的 evidence 与 method ID。
+
+`template.replace-me` 仅演示引用闭合；发布前必须替换为已登记 ID，或同时删除 evidence、method 与映射示例。
 
 ## 冻结分母与计算规则
 
@@ -55,9 +183,12 @@ output_allow_list_and_hashes: []
 
 | gate | verdict | input artifact IDs/hashes | reason codes | human decision artifact IDs/hashes |
 | --- | --- | --- | --- | --- |
-| G0–G7 | pending / pass / fail / not-applicable | REPLACE_WITH_INPUTS | REPLACE_WITH_DERIVED_REASONS | REPLACE_WITH_IMMUTABLE_DECISION_INPUTS |
+| G0–G4, G6–G7 | pending / pass / fail / not-applicable | REPLACE_WITH_INPUTS | REPLACE_WITH_DERIVED_REASONS | REPLACE_WITH_IMMUTABLE_DECISION_INPUTS |
+| G5 | pending / pass / fail | REPLACE_WITH_P5_INPUTS | REPLACE_WITH_G5_DERIVED_REASONS | REPLACE_WITH_STATIC_BRANCH_ACCEPTANCE_IF_USED |
 
-未来但适用的门禁保持 `pending`；只有已评估否定用 `fail`，`not-applicable` 必须有具名人类批准。
+未来但适用的门禁保持 `pending`；只有已评估否定用 `fail`，`not-applicable` 必须有具名人类批准。G5 只允许 `pending`、`pass` 或 `fail`，绝不使用 `not-applicable`；获批非运行分支仍必须对 G5 作通过或失败判定。
+
+每个 `reviewer` 与 `decided_at` 是覆盖汇总中的评审投影，并与对应证据引用一起指向人工决定；它们不写入确定性 `ART-G*` 派生门禁记录的内容身份，派生记录只由规则版本和不可变输入计算。
 
 ## 产物生命周期
 

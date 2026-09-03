@@ -4,29 +4,29 @@
 record_id: "REPLACE_WITH_QUALIFIED_INTERACTION_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"
 scope_or_module: "REPLACE_WITH_QUALIFIED_SCOPE_OR_MODULE_ID"
-status: "REPLACE_WITH_RECORD_STATUS"
-evidence_references: []
+status: "draft"
+evidence_references:
+  - "evidence:template.replace-me"
 owner: "REPLACE_WITH_NAMED_HUMAN_OWNER"
 validation_method: "REPLACE_WITH_REPRODUCIBLE_VALIDATION_METHOD"
 last_updated: "YYYY-MM-DD"
-atomic_claims:
-  - claim_id: "REPLACE_WITH_QUALIFIED_CLAIM_ID"
-    statement: "REPLACE_WITH_ONE_PRECISE_INTERACTION_FACT"
-    status: "REPLACE_WITH_CLAIM_STATUS"
-    confidence: "REPLACE_WITH_LOW_MEDIUM_OR_HIGH"
-    evidence_references: []
-evidence_method_entries:
-  - evidence_id: "REPLACE_WITH_QUALIFIED_EVIDENCE_ID"
-    method_id: "REPLACE_WITH_QUALIFIED_METHOD_ID"
+claim_references: []
+method_definitions:
+  - method_id: "method:template.replace-me"
     method_maturity: "proposed"
+evidence_method_entries:
+  - evidence_id: "evidence:template.replace-me"
+    method_id: "method:template.replace-me"
 actor_role_id: "REPLACE_WITH_QUALIFIED_ROLE_ID"
 entry_surface_id: "REPLACE_WITH_QUALIFIED_SURFACE_ID"
 scenario_context_id: "REPLACE_WITH_QUALIFIED_CONTEXT_ID"
 ```
 
-方法成熟度只评价取证、建模或验证方法及其证据基础，不评价目标产品事实；产品主张必须另用 `status`、`confidence` 和 `evidence_references`。
+方法成熟度只评价取证、建模或验证方法及其证据基础，不评价目标产品事实；产品主张必须在主张—证据记录中使用 `claim_status`、`confidence` 和支持/反驳证据引用。
 
-顶层 `status` 是本记录的生命周期状态；产品事实只写入 `atomic_claims`。`evidence_method_entries[].method_maturity` 只评价对应 `method_id`，不得提升关联主张。
+顶层 `status` 是本记录的生命周期状态；这里只保存 `claim_references`，主张正文、状态、置信度与支持/反驳关系只在主张—证据记录维护。`method_definitions[].method_maturity` 只评价对应方法，映射必须同时解析到本记录的 evidence 与 method ID。
+
+`template.replace-me` 仅演示引用闭合；发布前必须替换为已登记 ID，或同时删除 evidence、method 与映射示例。
 
 ## 入口、角色与前置状态
 

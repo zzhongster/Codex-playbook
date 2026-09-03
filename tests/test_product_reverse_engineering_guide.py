@@ -1,8 +1,11 @@
+import copy
 import re
 import runpy
 import tempfile
 import unittest
 from pathlib import Path
+
+import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -83,6 +86,20 @@ ALLOWED_MATURITY_LABELS = (
     "project-validated",
     "industry-established",
     "proposed",
+)
+RECORD_STATUSES = {
+    "draft",
+    "in-review",
+    "active",
+    "approved",
+    "frozen",
+    "replaced",
+    "withdrawn",
+}
+CONFIDENCE_LEVELS = {"low", "medium", "high"}
+GATE_VERDICTS = {"pending", "pass", "fail", "not-applicable"}
+STABLE_ID_PATTERN = re.compile(
+    r"^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+$"
 )
 CLAIM_STATUSES = {
     "observed",
@@ -298,31 +315,452 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIsNotNone(match, "missing copyable YAML metadata block")
         return match.group(1)
 
-    def assert_yaml_top_level_keys(self, metadata, expected_keys):
-        observed_keys = {
-            match.group(1)
-            for line in metadata.splitlines()
-            if (match := re.fullmatch(r"([a-z][a-z0-9_]*):(?: .*)?", line))
-        }
-        self.assertTrue(expected_keys.issubset(observed_keys))
+    def parse_yaml_metadata(self, document):
+        block = self.yaml_metadata_block(document)
+        try:
+            metadata = yaml.safe_load(block)
+        except yaml.YAMLError as error:
+            raise AssertionError(f"invalid YAML metadata: {error}") from error
+        self.assertIsInstance(metadata, dict)
+        self.assertTrue(metadata)
+        return metadata
 
-    def yaml_nested_list_item_keys(self, metadata, list_key):
-        match = re.search(
-            rf"(?ms)^{re.escape(list_key)}:\n((?:[ \t].*(?:\n|$))*)",
-            metadata,
+    def assert_qualified_references(self, references, expected_prefix=None):
+        self.assertIsInstance(references, list)
+        for reference in references:
+            self.assertIsInstance(reference, str)
+            self.assertRegex(reference, STABLE_ID_PATTERN)
+            if expected_prefix:
+                self.assertTrue(reference.startswith(f"{expected_prefix}:"))
+
+    def assert_common_record_metadata(self, metadata):
+        required = {
+            "record_id",
+            "product_version",
+            "scope_or_module",
+            "status",
+            "evidence_references",
+            "owner",
+            "validation_method",
+            "last_updated",
+            "method_definitions",
+            "evidence_method_entries",
+        }
+        self.assertTrue(required.issubset(metadata))
+        for key in (
+            "record_id",
+            "product_version",
+            "scope_or_module",
+            "owner",
+            "validation_method",
+            "last_updated",
+        ):
+            self.assertIsInstance(metadata[key], str)
+            self.assertTrue(metadata[key].strip())
+        self.assertIn(metadata["status"], RECORD_STATUSES)
+        self.assertNotIn("method_maturity", metadata)
+        self.assert_qualified_references(
+            metadata["evidence_references"], "evidence"
         )
-        self.assertIsNotNone(match, f"missing YAML list: {list_key}")
-        nested_lines = match.group(1)
-        self.assertRegex(nested_lines, r"(?m)^  - [a-z][a-z0-9_]*:")
-        return {
-            item.group(1)
-            for line in nested_lines.splitlines()
-            if (
-                item := re.fullmatch(
-                    r"\s+(?:- )?([a-z][a-z0-9_]*):(?: .*)?", line
+
+        methods = metadata["method_definitions"]
+        self.assertIsInstance(methods, list)
+        self.assertTrue(methods)
+        method_ids = set()
+        for method in methods:
+            self.assertIsInstance(method, dict)
+            self.assertTrue({"method_id", "method_maturity"}.issubset(method))
+            self.assertRegex(method["method_id"], STABLE_ID_PATTERN)
+            self.assertTrue(method["method_id"].startswith("method:"))
+            self.assertIn(method["method_maturity"], ALLOWED_MATURITY_LABELS)
+            method_ids.add(method["method_id"])
+        self.assertEqual(len(methods), len(method_ids))
+        maturity_locations = []
+
+        def find_maturity_locations(value, path=()):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    child_path = (*path, key)
+                    if key == "method_maturity":
+                        maturity_locations.append(child_path)
+                    find_maturity_locations(child, child_path)
+            elif isinstance(value, list):
+                for index, child in enumerate(value):
+                    find_maturity_locations(child, (*path, index))
+
+        find_maturity_locations(metadata)
+        self.assertEqual(
+            {
+                ("method_definitions", index, "method_maturity")
+                for index in range(len(methods))
+            },
+            set(maturity_locations),
+        )
+
+        mappings = metadata["evidence_method_entries"]
+        self.assertIsInstance(mappings, list)
+        self.assertTrue(mappings)
+        evidence_ids = set(metadata["evidence_references"])
+        mapped_evidence_ids = set()
+        for mapping in mappings:
+            self.assertIsInstance(mapping, dict)
+            self.assertEqual({"evidence_id", "method_id"}, set(mapping))
+            self.assertIn(mapping["evidence_id"], evidence_ids)
+            self.assertIn(mapping["method_id"], method_ids)
+            mapped_evidence_ids.add(mapping["evidence_id"])
+        self.assertEqual(evidence_ids, mapped_evidence_ids)
+
+    def assert_composite_template_metadata(self, metadata):
+        self.assert_common_record_metadata(metadata)
+        self.assertIn("claim_references", metadata)
+        self.assert_qualified_references(metadata["claim_references"], "claim")
+        for forbidden_truth_field in (
+            "atomic_claims",
+            "claim",
+            "claims",
+            "claim_statement",
+            "claim_status",
+            "confidence",
+            "confidence_rationale",
+            "supporting_evidence_references",
+            "contradicting_evidence_references",
+        ):
+            self.assertNotIn(forbidden_truth_field, metadata)
+
+    def assert_claim_evidence_template_metadata(self, metadata):
+        self.assert_common_record_metadata(metadata)
+        required = {
+            "claim_id",
+            "claim_statement",
+            "claim_status",
+            "confidence",
+            "confidence_rationale",
+            "supporting_evidence_references",
+            "contradicting_evidence_references",
+        }
+        self.assertTrue(required.issubset(metadata))
+        self.assertRegex(metadata["claim_id"], STABLE_ID_PATTERN)
+        self.assertTrue(metadata["claim_id"].startswith("claim:"))
+        self.assertIsInstance(metadata["claim_statement"], str)
+        self.assertTrue(metadata["claim_statement"].strip())
+        self.assertIn(metadata["claim_status"], CLAIM_STATUSES)
+        self.assertIn(metadata["confidence"], CONFIDENCE_LEVELS)
+        self.assertIsInstance(metadata["confidence_rationale"], str)
+        evidence_ids = set(metadata["evidence_references"])
+        for relation_key in (
+            "supporting_evidence_references",
+            "contradicting_evidence_references",
+        ):
+            self.assert_qualified_references(metadata[relation_key], "evidence")
+            self.assertTrue(set(metadata[relation_key]).issubset(evidence_ids))
+        self.assertEqual(
+            evidence_ids,
+            set(metadata["supporting_evidence_references"])
+            | set(metadata["contradicting_evidence_references"]),
+        )
+
+    def assert_coverage_gate_metadata(self, metadata):
+        gates = metadata.get("gates")
+        self.assertIsInstance(gates, dict)
+        self.assertEqual({f"G{index}" for index in range(8)}, set(gates))
+        gate_record_references = []
+        for gate_id, gate in gates.items():
+            self.assertIsInstance(gate, dict)
+            self.assertEqual(
+                {
+                    "gate_record_reference",
+                    "verdict",
+                    "reviewer",
+                    "decided_at",
+                    "evidence_references",
+                },
+                set(gate),
+            )
+            allowed_verdicts = GATE_VERDICTS - (
+                {"not-applicable"} if gate_id == "G5" else set()
+            )
+            self.assertIn(gate["verdict"], allowed_verdicts)
+            self.assertIsInstance(gate["gate_record_reference"], dict)
+            self.assertEqual(
+                {"id", "sha256"}, set(gate["gate_record_reference"])
+            )
+            for identity_part in gate["gate_record_reference"].values():
+                self.assertIsInstance(identity_part, str)
+                self.assertTrue(identity_part.strip())
+            gate_record_references.append(gate["gate_record_reference"]["id"])
+            self.assertIsInstance(gate["reviewer"], str)
+            self.assertTrue(gate["reviewer"].strip())
+            if gate["verdict"] == "pending":
+                self.assertIsNone(gate["decided_at"])
+            else:
+                self.assertIsInstance(gate["decided_at"], str)
+                self.assertTrue(gate["decided_at"].strip())
+            self.assert_qualified_references(
+                gate["evidence_references"], "evidence"
+            )
+            self.assertTrue(
+                set(gate["evidence_references"]).issubset(
+                    set(metadata["evidence_references"])
                 )
             )
+        self.assertEqual(
+            len(gate_record_references), len(set(gate_record_references))
+        )
+
+    def assert_experiment_template_metadata(self, metadata):
+        required = {
+            "artifacts",
+            "fingerprints",
+            "action_permissions",
+            "operational_limits",
+            "recovery",
+            "target_claim_references",
+            "protocol_frozen_at",
+            "role_and_test_account",
+            "inputs",
+            "alternative_explanations",
+            "variables",
+            "wait_conditions",
+            "tool_versions",
+            "forbidden_side_effects",
+            "reproduction_criteria",
+            "protocol_steps",
+            "expected_observations",
+            "run_results",
+            "independent_reproduction_results",
+            "first_failure",
+            "side_effect_records",
+            "cleanup",
+            "residual_checks",
+            "authorization_record_id",
+            "authorization_gate_record_id",
+            "environment_identity",
+            "pre_state_fingerprint",
+            "sentinel",
         }
+        self.assertTrue(required.issubset(metadata))
+        self.assertEqual(
+            {"protocol_artifact_id", "result_artifact_id", "effects_artifact_id"},
+            set(metadata["artifacts"]),
+        )
+        for artifact_id in metadata["artifacts"].values():
+            self.assertIsInstance(artifact_id, str)
+            self.assertTrue(artifact_id.strip())
+        self.assertEqual(
+            {"source", "artifact", "clone"}, set(metadata["fingerprints"])
+        )
+        for fingerprint in metadata["fingerprints"].values():
+            self.assertIsInstance(fingerprint, str)
+            self.assertTrue(fingerprint.strip())
+        permissions = metadata["action_permissions"]
+        self.assertEqual(
+            {"read", "write", "fault-injection", "egress", "cleanup"},
+            set(permissions),
+        )
+        for permission in permissions.values():
+            self.assertIsInstance(permission, dict)
+            self.assertEqual({"verdict", "authorization_reference"}, set(permission))
+            self.assertIn(
+                permission["verdict"],
+                {"authorized", "not-authorized", "not-applicable"},
+            )
+            self.assertIsInstance(permission["authorization_reference"], str)
+            self.assertTrue(permission["authorization_reference"].strip())
+        self.assertEqual(
+            {"cost", "rate", "blast_radius"},
+            set(metadata["operational_limits"]),
+        )
+        for limit in metadata["operational_limits"].values():
+            self.assertIsInstance(limit, str)
+            self.assertTrue(limit.strip())
+        self.assertEqual(
+            {"recovery_point", "owner", "max_restore_time"},
+            set(metadata["recovery"]),
+        )
+        for recovery_field in metadata["recovery"].values():
+            self.assertIsInstance(recovery_field, str)
+            self.assertTrue(recovery_field.strip())
+        self.assert_qualified_references(
+            metadata["target_claim_references"], "claim"
+        )
+        self.assertIsInstance(metadata["protocol_frozen_at"], str)
+        self.assertTrue(metadata["protocol_frozen_at"].strip())
+        self.assertEqual(
+            {"role", "test_account_id"}, set(metadata["role_and_test_account"])
+        )
+        for value in metadata["role_and_test_account"].values():
+            self.assertIsInstance(value, str)
+            self.assertTrue(value.strip())
+        for identity_key in (
+            "authorization_record_id",
+            "authorization_gate_record_id",
+            "environment_identity",
+            "pre_state_fingerprint",
+            "sentinel",
+        ):
+            self.assertIsInstance(metadata[identity_key], str)
+            self.assertTrue(metadata[identity_key].strip())
+        structured_lists = {
+            "alternative_explanations": {
+                "explanation_id",
+                "statement",
+                "distinguishing_evidence_needed",
+            },
+            "variables": {"name", "controlled_value", "uncontrolled_limit"},
+            "wait_conditions": {"condition", "timeout", "on_timeout"},
+            "tool_versions": {"tool", "version", "configuration_hash"},
+            "forbidden_side_effects": {"effect", "detection", "stop_response"},
+            "protocol_steps": {
+                "step_id",
+                "action",
+                "input",
+                "observation_points",
+                "stop_condition",
+            },
+            "expected_observations": {
+                "observation_id",
+                "surface",
+                "expected",
+                "tolerance",
+            },
+            "inputs": {"input_id", "value_or_fingerprint", "data_classification"},
+        }
+        for list_key, item_keys in structured_lists.items():
+            self.assertIsInstance(metadata[list_key], list)
+            self.assertTrue(metadata[list_key])
+            for item in metadata[list_key]:
+                self.assertIsInstance(item, dict)
+                self.assertEqual(item_keys, set(item))
+        self.assertEqual(
+            {
+                "required_runs",
+                "independent_executor_required",
+                "environment_equivalence_rule",
+                "tolerance_rule",
+            },
+            set(metadata["reproduction_criteria"]),
+        )
+        self.assertIsInstance(metadata["reproduction_criteria"]["required_runs"], int)
+        self.assertGreaterEqual(metadata["reproduction_criteria"]["required_runs"], 1)
+        self.assertIsInstance(
+            metadata["reproduction_criteria"]["independent_executor_required"],
+            bool,
+        )
+        for list_key in ("run_results", "independent_reproduction_results"):
+            self.assertIsInstance(metadata[list_key], list)
+        self.assertTrue(metadata["run_results"])
+        self.assertTrue(metadata["independent_reproduction_results"])
+        for result in (
+            *metadata["run_results"],
+            *metadata["independent_reproduction_results"],
+        ):
+            self.assertIsInstance(result, dict)
+            self.assertEqual(
+                {
+                    "run_id",
+                    "started_at",
+                    "ended_at",
+                    "executor",
+                    "environment_identity",
+                    "random_seed",
+                    "sample_selection",
+                    "result",
+                    "actual_observations",
+                    "deviations",
+                    "evidence_references",
+                },
+                set(result),
+            )
+            self.assertIsInstance(result["run_id"], str)
+            self.assertTrue(result["run_id"].strip())
+            self.assertIn(result["result"], {"not-run", "passed", "failed", "mixed"})
+            self.assertIsInstance(result["actual_observations"], list)
+            self.assert_qualified_references(result["evidence_references"], "evidence")
+        self.assertEqual(
+            {
+                "present",
+                "run_id",
+                "captured_at",
+                "observation_surfaces",
+                "correlation_ids",
+                "evidence_references",
+                "preserved_before_retry",
+            },
+            set(metadata["first_failure"]),
+        )
+        self.assertIsInstance(metadata["first_failure"]["present"], bool)
+        self.assertIsInstance(
+            metadata["first_failure"]["preserved_before_retry"], bool
+        )
+        for nullable_string_key in ("run_id", "captured_at"):
+            self.assertTrue(
+                metadata["first_failure"][nullable_string_key] is None
+                or isinstance(
+                    metadata["first_failure"][nullable_string_key], str
+                )
+            )
+        for list_key in ("observation_surfaces", "correlation_ids"):
+            self.assertIsInstance(metadata["first_failure"][list_key], list)
+        self.assert_qualified_references(
+            metadata["first_failure"]["evidence_references"], "evidence"
+        )
+        self.assertIsInstance(metadata["side_effect_records"], list)
+        self.assertTrue(metadata["side_effect_records"])
+        for effect in metadata["side_effect_records"]:
+            self.assertIsInstance(effect, dict)
+            self.assertEqual(
+                {
+                    "effect_id",
+                    "kind",
+                    "target",
+                    "occurred",
+                    "reversal_action",
+                    "recovery_validation",
+                    "owner",
+                    "disposition",
+                    "disposition_proof_references",
+                },
+                set(effect),
+            )
+            self.assertIsInstance(effect["occurred"], bool)
+            self.assert_qualified_references(
+                effect["disposition_proof_references"], "evidence"
+            )
+        self.assertEqual(
+            {"steps", "result", "disposition_proof_references"},
+            set(metadata["cleanup"]),
+        )
+        self.assertIn(
+            metadata["cleanup"]["result"],
+            {"not-run", "passed", "failed", "partial"},
+        )
+        self.assertIsInstance(metadata["cleanup"]["steps"], list)
+        self.assertTrue(metadata["cleanup"]["steps"])
+        for step in metadata["cleanup"]["steps"]:
+            self.assertIsInstance(step, dict)
+            self.assertEqual({"step_id", "action", "verification"}, set(step))
+        self.assert_qualified_references(
+            metadata["cleanup"]["disposition_proof_references"], "evidence"
+        )
+        self.assertEqual(
+            {"checks", "result", "evidence_references"},
+            set(metadata["residual_checks"]),
+        )
+        self.assertIsInstance(metadata["residual_checks"]["checks"], list)
+        self.assertTrue(metadata["residual_checks"]["checks"])
+        for check in metadata["residual_checks"]["checks"]:
+            self.assertIsInstance(check, dict)
+            self.assertEqual(
+                {"surface", "sentinel_query", "expected", "actual", "difference"},
+                set(check),
+            )
+        self.assertIn(
+            metadata["residual_checks"]["result"],
+            {"not-run", "passed", "failed", "partial"},
+        )
+        self.assert_qualified_references(
+            metadata["residual_checks"]["evidence_references"], "evidence"
+        )
 
     def assert_guided_sections(self, document, headings):
         for heading in headings:
@@ -1541,43 +1979,25 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             with self.subTest(template=name):
                 self.assertTrue(path.is_file(), f"missing record template: {path}")
 
-    def test_record_templates_have_copyable_metadata_and_separate_method_maturity(self):
+    def test_development_dependencies_include_the_yaml_parser(self):
+        requirements = self.read_repo_file("requirements-dev.txt").splitlines()
+        self.assertIn("PyYAML>=6,<7", requirements)
+
+    def test_record_templates_have_parseable_typed_metadata_and_closed_method_links(self):
         self.require_all_templates()
-        required_keys = {
-            "record_id",
-            "product_version",
-            "scope_or_module",
-            "status",
-            "evidence_references",
-            "owner",
-            "validation_method",
-            "last_updated",
-        }
         for name in TEMPLATE_DOCUMENTS:
             if name == "project-charter":
                 continue
             with self.subTest(template=name):
                 document = self.read_template_document(name)
-                metadata = self.yaml_metadata_block(document)
-                self.assert_yaml_top_level_keys(metadata, required_keys)
-                self.assertNotRegex(metadata, r"(?m)^method_maturity:")
-                method_keys = self.yaml_nested_list_item_keys(
-                    metadata, "evidence_method_entries"
-                )
-                self.assertTrue(
-                    {"evidence_id", "method_id", "method_maturity"}.issubset(
-                        method_keys
-                    )
-                )
-                self.assertRegex(
-                    metadata,
-                    r"(?m)^    method_maturity: "
-                    r'"(cross-project-validated|project-validated|industry-established|proposed)"$',
-                )
+                metadata = self.parse_yaml_metadata(document)
+                self.assert_common_record_metadata(metadata)
+                self.assertNotIn("产品主张必须另用 `status`", document)
+                self.assertIn("`claim_status`", document)
                 self.assertNotRegex(document, r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
                 self.assertNotIn("/Users/", document)
 
-    def test_composite_templates_use_record_status_and_atomic_claim_entries(self):
+    def test_composite_templates_reference_claim_authority_without_copying_truth(self):
         self.require_all_templates()
         composite_templates = set(TEMPLATE_DOCUMENTS) - {
             "project-charter",
@@ -1585,32 +2005,49 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         }
         for name in sorted(composite_templates):
             with self.subTest(template=name):
-                metadata = self.yaml_metadata_block(
+                metadata = self.parse_yaml_metadata(
                     self.read_template_document(name)
                 )
-                self.assertRegex(
-                    metadata,
-                    r'(?m)^status: "REPLACE_WITH_RECORD_STATUS"$',
-                )
-                claim_keys = self.yaml_nested_list_item_keys(
-                    metadata, "atomic_claims"
-                )
-                self.assertTrue(
-                    {
-                        "claim_id",
-                        "statement",
-                        "status",
-                        "confidence",
-                        "evidence_references",
-                    }.issubset(claim_keys)
-                )
+                self.assert_composite_template_metadata(metadata)
+
+    def test_template_contract_rejects_invalid_yaml_and_duplicate_claim_truth(self):
+        invalid_yaml = self.read_template_document("asset-record").replace(
+            'record_id: "REPLACE_WITH_QUALIFIED_ASSET_ID"',
+            'record_id: ["unterminated"',
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            self.parse_yaml_metadata(invalid_yaml)
+
+        duplicated_truth = self.parse_yaml_metadata(
+            self.read_template_document("asset-record")
+        )
+        duplicated_truth["atomic_claims"] = [
+            {
+                "claim_id": "claim:mutation.duplicate-truth",
+                "statement": "duplicated claim truth",
+                "status": "observed",
+                "confidence": "high",
+                "evidence_references": [],
+            }
+        ]
+        with self.assertRaises(AssertionError):
+            self.assert_composite_template_metadata(duplicated_truth)
+
+        broken_method_link = self.parse_yaml_metadata(
+            self.read_template_document("asset-record")
+        )
+        broken_method_link["evidence_method_entries"][0][
+            "method_id"
+        ] = "method:mutation.not-declared"
+        with self.assertRaises(AssertionError):
+            self.assert_common_record_metadata(broken_method_link)
 
     def test_project_charter_fixes_authorization_and_delivery_boundaries(self):
         self.require_all_templates()
         document = self.read_template_document("project-charter")
-        metadata = self.yaml_metadata_block(document)
-        self.assert_yaml_top_level_keys(
-            metadata,
+        metadata = self.parse_yaml_metadata(document)
+        self.assertTrue(
             {
                 "charter_id",
                 "authorization",
@@ -1621,8 +2058,18 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "exclusions",
                 "risks",
                 "approval_owners",
-            },
+            }.issubset(metadata)
         )
+        self.assertIsInstance(metadata["authorization"], dict)
+        for list_key in (
+            "allowed_environments",
+            "prohibited_actions",
+            "outputs",
+            "exclusions",
+            "risks",
+            "approval_owners",
+        ):
+            self.assertIsInstance(metadata[list_key], list)
         self.assert_guided_sections(
             document,
             (
@@ -1763,47 +2210,26 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 )
 
         experiment = self.read_template_document("experiment-record")
-        for contract in (
-            "environment identity",
-            "pre-state fingerprint",
-            "sentinel",
-            "expected observations",
-            "actual observations",
-            "first failure",
-            "cleanup",
-            "residual checks",
-        ):
-            self.assertIn(contract, experiment)
+        experiment_metadata = self.parse_yaml_metadata(experiment)
+        self.assert_composite_template_metadata(experiment_metadata)
+        self.assert_experiment_template_metadata(experiment_metadata)
 
         claim = self.read_template_document("claim-evidence-record")
-        claim_metadata = self.yaml_metadata_block(claim)
-        self.assertRegex(
-            claim_metadata,
-            r'(?m)^status: "REPLACE_WITH_RECORD_STATUS"$',
-        )
-        self.assert_yaml_top_level_keys(
-            claim_metadata,
-            {
-                "claim_id",
-                "claim_statement",
-                "claim_status",
-                "confidence",
-                "supporting_evidence_references",
-                "contradicting_evidence_references",
-                "evidence_method_entries",
-            },
-        )
+        claim_metadata = self.parse_yaml_metadata(claim)
+        self.assert_claim_evidence_template_metadata(claim_metadata)
         self.assertIn("一个证据项不等于一条产品主张", claim)
         self.assertIn("支持和反驳证据必须分列", claim)
         self.assertNotIn("claim_maturity", claim)
 
         freeze = self.read_template_document("coverage-and-freeze")
+        freeze_metadata = self.parse_yaml_metadata(freeze)
+        self.assert_composite_template_metadata(freeze_metadata)
+        self.assert_coverage_gate_metadata(freeze_metadata)
+        self.assertNotIn(
+            "| G0–G7 | pending / pass / fail / not-applicable |", freeze
+        )
         for contract in (
             "先冻结分母，再计算分子",
-            "pending",
-            "pass",
-            "fail",
-            "not-applicable",
             "active",
             "replaced",
             "withdrawn",
@@ -1825,19 +2251,55 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "non-functional",
             "trace",
         )
-        dimension_rows = [
-            match.group(1)
-            for line in freeze.splitlines()
-            if (
-                match := re.fullmatch(
-                    r"\| (structure|product|semantic|runtime|data|permission|"
-                    r"integration|non-functional|trace) \| [^|]+ \| [^|]+ \| "
-                    r"[^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \|",
-                    line,
-                )
+        dimensions = freeze_metadata.get("coverage_dimensions")
+        self.assertIsInstance(dimensions, dict)
+        self.assertEqual(set(coverage_dimensions), set(dimensions))
+        for dimension in coverage_dimensions:
+            record = dimensions[dimension]
+            self.assertEqual(
+                {
+                    "denominator",
+                    "covered",
+                    "unknown",
+                    "conflicting",
+                    "excluded",
+                    "risk_counts",
+                },
+                set(record),
             )
-        ]
-        self.assertEqual(list(coverage_dimensions), dimension_rows)
+            for count_key in (
+                "denominator",
+                "covered",
+                "unknown",
+                "conflicting",
+                "excluded",
+            ):
+                self.assertIsInstance(record[count_key], int)
+                self.assertGreaterEqual(record[count_key], 0)
+            self.assertLessEqual(record["covered"], record["denominator"])
+            self.assertEqual({"P0", "P1", "P2"}, set(record["risk_counts"]))
+            for risk_count in record["risk_counts"].values():
+                self.assertIsInstance(risk_count, int)
+                self.assertGreaterEqual(risk_count, 0)
+
+    def test_coverage_template_rejects_g5_not_applicable(self):
+        metadata = self.parse_yaml_metadata(
+            self.read_template_document("coverage-and-freeze")
+        )
+        mutation = copy.deepcopy(metadata)
+        mutation["gates"]["G5"]["verdict"] = "not-applicable"
+        mutation["gates"]["G5"]["decided_at"] = "2000-01-01T00:00:00Z"
+        with self.assertRaises(AssertionError):
+            self.assert_coverage_gate_metadata(mutation)
+
+    def test_experiment_template_rejects_a_missing_required_field(self):
+        metadata = self.parse_yaml_metadata(
+            self.read_template_document("experiment-record")
+        )
+        mutation = copy.deepcopy(metadata)
+        del mutation["recovery"]["max_restore_time"]
+        with self.assertRaises(AssertionError):
+            self.assert_experiment_template_metadata(mutation)
 
     def test_required_entry_files_exist(self):
         for path in REQUIRED_ENTRY_FILES:
