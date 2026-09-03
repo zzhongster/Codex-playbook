@@ -1,5 +1,9 @@
 # 决定记录模板
 
+**证据成熟度：`proposed`**
+
+**适用范围：** 用于登记有权人类对明确问题、备选项、影响和取代关系作出的决定；不替代决定权限、授权签署或输入产品事实证明。
+
 ```yaml
 record_id: "REPLACE_WITH_QUALIFIED_DECISION_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"

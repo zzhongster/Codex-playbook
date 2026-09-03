@@ -1,5 +1,9 @@
 # 业务能力记录模板
 
+**证据成熟度：`proposed`**
+
+**适用范围：** 用于登记角色、业务结果、产品表面和场景组成的候选能力记录；不替代研究授权、领域负责人确认或目标产品事实证明。
+
 ```yaml
 record_id: "REPLACE_WITH_QUALIFIED_CAPABILITY_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"

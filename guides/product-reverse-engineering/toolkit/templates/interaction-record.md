@@ -1,5 +1,9 @@
 # 交互记录模板
 
+**证据成熟度：`proposed`**
+
+**适用范围：** 用于登记角色在特定前置状态下通过产品表面执行的交互与可见结果；不替代账号或环境授权，也不证明未被证据支持的产品事实。
+
 ```yaml
 record_id: "REPLACE_WITH_QUALIFIED_INTERACTION_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"

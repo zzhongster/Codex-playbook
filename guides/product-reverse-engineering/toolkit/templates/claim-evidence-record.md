@@ -1,5 +1,9 @@
 # 主张与证据关联记录模板
 
+**证据成熟度：`proposed`**
+
+**适用范围：** 用于登记原子化产品主张、主张状态、置信度及支持或反驳证据；不替代取证授权或事实证明，页面的方法成熟度也不写入产品主张。
+
 ```yaml
 record_id: "REPLACE_WITH_QUALIFIED_CLAIM_EVIDENCE_ASSOCIATION_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"

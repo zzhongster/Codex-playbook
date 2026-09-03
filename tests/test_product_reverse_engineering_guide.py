@@ -97,6 +97,7 @@ TEMPLATE_DOCUMENTS = {
     )
 }
 TOOLKIT_ROOT = GUIDE_ROOT / "toolkit"
+TOOLKIT_INDEX_PATH = TOOLKIT_ROOT / "README.md"
 OPERATOR_TOOLKIT_DOCUMENTS = {
     name: TOOLKIT_ROOT / f"{name}.md"
     for name in (
@@ -486,7 +487,7 @@ TASK_4_DOCUMENT_NAMES = (
     "human-agent-collaboration",
 )
 REQUIRED_DELPHI_SECTIONS = (
-    "来源项目观察与证据缺口",
+    "来源项目观察与成熟度边界",
     "访问轨道选择",
     "项目与运行身份",
     "DPR、PAS 与 DFM 资产",
@@ -6919,15 +6920,27 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assert_one_nonblank_applicability_declaration(document)
         self.assertNotIn("**段落依据：`project-validated`**", document)
         self.assertIn(
-            "**证据标记：`source-project-observation`；通用指南链接：`pending`**",
+            "[gjpERP Delphi ERP 逆向案例]"
+            "(../case-studies/gjperp-delphi-erp.md)",
             document,
         )
         source_project = self.section_text(
-            document, "## 来源项目观察与证据缺口"
+            document, "## 来源项目观察与成熟度边界"
         )
         self.assertIn("gjpERP 启发的观察", source_project)
-        self.assertIn("可审计案例索引、限定稳定 ID 和输入哈希", source_project)
-        self.assertIn("不能证明整页方法已完成项目验证", source_project)
+        for contract in (
+            "限定稳定 ID",
+            "输入身份",
+            "Git blob OID",
+            "project-validated",
+            "单一项目",
+            "本 Delphi 分册仍为 `proposed`",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, source_project)
+        for stale_contract in ("通用指南链接：`pending`", "尚未附带", "待建立"):
+            with self.subTest(stale_contract=stale_contract):
+                self.assertNotIn(stale_contract, source_project)
         self.assertNotIn("/Users/", document)
         self.assertNotRegex(document, r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
 
@@ -9672,6 +9685,130 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
 
     def test_guide_readme_links_root_contributing_guide_relatively(self):
         self.assertIn("](../../CONTRIBUTING.md)", self.read_guide())
+
+    def test_every_published_markdown_page_has_one_page_level_governance_header(self):
+        maturity_pattern = re.compile(r"^\*\*证据成熟度：`([^`]+)`\*\*$")
+        guide_pages = sorted(GUIDE_ROOT.rglob("*.md"))
+        self.assertTrue(guide_pages)
+        for path in guide_pages:
+            with self.subTest(page=path.relative_to(GUIDE_ROOT)):
+                document = path.read_text(encoding="utf-8")
+                lines = document.splitlines()
+                self.assertTrue(lines and lines[0].startswith("# "))
+                maturity_declarations = [
+                    line.strip()
+                    for line in lines
+                    if line.strip().removeprefix("**").startswith("证据成熟度：")
+                ]
+                applicability_declarations = [
+                    line.strip()
+                    for line in lines
+                    if line.strip().removeprefix("**").startswith("适用范围：")
+                ]
+                self.assertEqual(1, len(maturity_declarations))
+                maturity = maturity_pattern.fullmatch(maturity_declarations[0])
+                self.assertIsNotNone(maturity)
+                self.assertIn(maturity.group(1), ALLOWED_MATURITY_LABELS)
+                self.assertEqual(1, len(applicability_declarations))
+                self.assertRegex(
+                    applicability_declarations[0],
+                    r"^\*\*适用范围：\*\*\s*\S.+$",
+                )
+                self.assertEqual(maturity_declarations[0], lines[2].strip())
+                self.assertEqual(applicability_declarations[0], lines[4].strip())
+
+    def test_toolkit_index_discovers_every_template_schema_example_and_validator(self):
+        self.assertTrue(TOOLKIT_INDEX_PATH.is_file())
+        document = TOOLKIT_INDEX_PATH.read_text(encoding="utf-8")
+        guide = self.read_guide()
+        self.assertIn("](toolkit/README.md)", guide)
+
+        indexed_targets = []
+        for target in re.findall(r"(?<!!)\[[^\]]+\]\(([^)]+)\)", document):
+            local_target = target.strip().removeprefix("<").removesuffix(">")
+            if re.match(r"^[a-z][a-z0-9+.-]*:", local_target, re.IGNORECASE):
+                continue
+            resolved = (
+                TOOLKIT_INDEX_PATH.parent / local_target.split("#", 1)[0]
+            ).resolve()
+            indexed_targets.append(resolved)
+
+        expected_targets = {
+            *TEMPLATE_DOCUMENTS.values(),
+            *SCHEMA_DOCUMENTS.values(),
+            *(
+                path
+                for examples in SCHEMA_EXAMPLES.values()
+                for path in examples.values()
+            ),
+        }
+        published_targets = {
+            *TEMPLATE_ROOT.glob("*.md"),
+            *SCHEMA_ROOT.glob("*.schema.json"),
+            *(SCHEMA_ROOT / "examples").glob("*.json"),
+        }
+        self.assertEqual(expected_targets, published_targets)
+        for expected in sorted(expected_targets):
+            with self.subTest(indexed=expected.relative_to(TOOLKIT_ROOT)):
+                self.assertEqual(1, indexed_targets.count(expected))
+                self.assertTrue(expected.is_file())
+
+        for command in (
+            "python3 tools/validate_product_reverse_engineering_guide.py path/to/record.json",
+            "python3 tools/validate_product_reverse_engineering_guide.py",
+        ):
+            with self.subTest(command=command):
+                self.assertIn(command, document)
+        for boundary in (
+            "不授予",
+            "不证明产品事实",
+            "不会提高产品主张状态",
+        ):
+            with self.subTest(boundary=boundary):
+                self.assertIn(boundary, document)
+
+        current_scope = self.section_text(guide, "## 当前范围")
+        validation_scope = self.section_text(guide, "## 验证")
+        for count_contract in (
+            "13 份",
+            "8 份",
+            "14 份",
+            "记录 CLI",
+            "指南验证器",
+        ):
+            with self.subTest(scope_contract=count_contract):
+                self.assertIn(count_contract, current_scope)
+        for validation_contract in (
+            "全部 Markdown 页面",
+            "工具箱全量索引",
+            "本地链接闭包",
+            "模板/Schema/正反样例",
+        ):
+            with self.subTest(validation_contract=validation_contract):
+                self.assertIn(validation_contract, validation_scope)
+
+    def test_every_published_markdown_page_has_resolving_local_links(self):
+        for path in sorted(GUIDE_ROOT.rglob("*.md")):
+            with self.subTest(page=path.relative_to(GUIDE_ROOT)):
+                self.assert_local_markdown_links_resolve(
+                    path, path.read_text(encoding="utf-8")
+                )
+
+    def test_template_page_governance_does_not_assign_maturity_to_product_claims(self):
+        for name, path in TEMPLATE_DOCUMENTS.items():
+            with self.subTest(template=name):
+                document = path.read_text(encoding="utf-8")
+                applicability = next(
+                    line
+                    for line in document.splitlines()
+                    if line.startswith("**适用范围：**")
+                )
+                self.assertIn("用于", applicability)
+                self.assertRegex(applicability, r"不(?:替代|证明)")
+                metadata = self.parse_yaml_metadata(document)
+                if name == "claim-evidence-record":
+                    self.assertNotIn("maturity", metadata)
+                    self.assertNotIn("method_maturity", metadata)
 
     def test_all_local_markdown_links_resolve_from_their_source_document(self):
         for source_path in LINK_SOURCE_DOCUMENTS:

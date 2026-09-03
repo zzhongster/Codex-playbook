@@ -1,5 +1,9 @@
 # API 与集成记录模板
 
+**证据成熟度：`proposed`**
+
+**适用范围：** 用于登记已获授权范围内的 API、RPC、消息或文件集成及其边界；不替代访问授权、协议所有者确认或目标产品事实证明。
+
 ```yaml
 record_id: "REPLACE_WITH_QUALIFIED_INTEGRATION_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"

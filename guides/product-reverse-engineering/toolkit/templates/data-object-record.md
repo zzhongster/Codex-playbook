@@ -1,5 +1,9 @@
 # 数据对象记录模板
 
+**证据成熟度：`proposed`**
+
+**适用范围：** 用于登记业务数据对象、技术别名、身份作用域和数据分类；不替代数据访问授权、隐私审查或目标产品事实证明。
+
 ```yaml
 record_id: "REPLACE_WITH_QUALIFIED_DATA_OBJECT_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"

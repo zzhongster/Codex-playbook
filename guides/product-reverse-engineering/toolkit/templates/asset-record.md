@@ -1,5 +1,9 @@
 # 技术资产记录模板
 
+**证据成熟度：`proposed`**
+
+**适用范围：** 用于登记已获授权的软件、配置、制品、数据或部署资产及其身份边界；不替代资产访问授权、来源保管证明或目标产品事实证明。
+
 ```yaml
 record_id: "REPLACE_WITH_QUALIFIED_ASSET_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"

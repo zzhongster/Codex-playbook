@@ -1,5 +1,9 @@
 # 覆盖与冻结记录模板
 
+**证据成熟度：`proposed`**
+
+**适用范围：** 用于登记冻结分母、覆盖桶、门禁输入和可重建冻结身份；不替代授权决定、人工发布批准或任何产品事实证明。
+
 ```yaml
 schema_version: "1.0.0"
 record_id: "REPLACE_WITH_QUALIFIED_COVERAGE_OR_FREEZE_ID"

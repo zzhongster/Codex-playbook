@@ -1,5 +1,9 @@
 # 竞品洞察记录模板
 
+**证据成熟度：`proposed`**
+
+**适用范围：** 用于登记授权边界内的竞品观察、比较范围与战略决定责任人；不替代合法访问授权、采购判断或目标产品事实证明。
+
 ```yaml
 record_id: "REPLACE_WITH_QUALIFIED_COMPETITOR_INSIGHT_ID"
 product_version: "REPLACE_WITH_OBSERVED_COMPETITOR_VERSION_OR_TIME_BOUNDARY"

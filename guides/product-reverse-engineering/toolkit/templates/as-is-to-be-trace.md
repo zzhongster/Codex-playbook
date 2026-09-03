@@ -1,5 +1,9 @@
 # As-Is 到 To-Be 追踪模板
 
+**证据成熟度：`proposed`**
+
+**适用范围：** 用于把已登记的 As-Is 产品主张追踪到 To-Be 需求和人类决定；不替代项目授权、目标架构审批或任何产品事实证明。
+
 ```yaml
 record_id: "REPLACE_WITH_QUALIFIED_TRANSFORMATION_TRACE_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_AS_IS_PRODUCT_VERSION"

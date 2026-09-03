@@ -1,5 +1,9 @@
 # 业务规则记录模板
 
+**证据成熟度：`proposed`**
+
+**适用范围：** 用于登记候选业务规则、优先级、冲突关系及其证据引用；不替代领域确认、规则变更授权或目标产品事实证明。
+
 ```yaml
 record_id: "REPLACE_WITH_QUALIFIED_RULE_ID"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"
