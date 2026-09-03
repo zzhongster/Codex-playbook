@@ -25,6 +25,10 @@ FOUNDATION_DOCUMENTS = {
     "evidence-and-confidence": GUIDE_ROOT
     / "core"
     / "evidence-and-confidence.md",
+    "end-to-end-workflow": GUIDE_ROOT / "core" / "end-to-end-workflow.md",
+    "product-and-business-modeling": GUIDE_ROOT
+    / "core"
+    / "product-and-business-modeling.md",
 }
 LINK_SOURCE_DOCUMENTS = (
     REPO_ROOT / "README.md",
@@ -96,6 +100,9 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
 
     def test_all_local_markdown_links_resolve_from_their_source_document(self):
         for source_path in LINK_SOURCE_DOCUMENTS:
+            self.assertTrue(
+                source_path.is_file(), f"missing source document: {source_path}"
+            )
             document = source_path.read_text(encoding="utf-8")
             links = re.findall(r"(?<!!)\[[^\]]+\]\(([^)]+)\)", document)
             for link in links:
@@ -286,6 +293,118 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         ):
             with self.subTest(contrast=contrast):
                 self.assertRegex(document, rf"(?m)^### {contrast}$")
+
+    def test_end_to_end_workflow_defines_each_phase_contract_locally(self):
+        document = self.read_foundation_document("end-to-end-workflow")
+        phase_topics = (
+            "授权、目标与安全",
+            "基线与分母",
+            "产品表面与角色",
+            "技术图谱",
+            "纵向证据链",
+            "运行时实验",
+            "业务语义综合",
+            "完整性、冲突与质量审计",
+            "冻结与重写/竞品映射",
+            "增量校准与方法学习",
+        )
+        required_subheadings = (
+            "#### 进入条件",
+            "#### 执行动作",
+            "#### 交付物",
+            "#### 退出门禁",
+            "#### 常见失败模式",
+            "#### 停止规则",
+        )
+
+        for phase_number, topic in enumerate(phase_topics):
+            phase_heading = f"### Phase {phase_number}"
+            with self.subTest(phase=phase_number):
+                self.assertEqual(1, document.splitlines().count(phase_heading))
+                phase_section = self.section_text(document, phase_heading)
+                self.assertIn(topic, phase_section)
+                for subheading in required_subheadings:
+                    self.assertEqual(1, phase_section.splitlines().count(subheading))
+                action_section = self.section_text(phase_section, "#### 执行动作")
+                self.assertRegex(action_section, r"(?m)^1\. \S")
+
+    def test_end_to_end_workflow_defines_minimal_trace_loop(self):
+        document = self.read_foundation_document("end-to-end-workflow")
+        self.assertIn(
+            "角色/入口 → 交互 → 代码/服务 → 数据/异步副作用 → "
+            "规则 → 实验 → 决策 → 验收",
+            document,
+        )
+
+    def test_product_modeling_defines_substantive_model_sections(self):
+        document = self.read_foundation_document("product-and-business-modeling")
+        required_sections = (
+            "## 产品地图先行",
+            "## 能力模型",
+            "## 角色模型",
+            "## 用户旅程",
+            "## 交互模型",
+            "## 状态机",
+            "## 业务规则",
+            "## 决策表",
+            "## 公式",
+            "## 权限模型",
+            "## 关键业务语义",
+            "## 错误与补偿",
+            "## 跨模块不变量",
+        )
+        for heading in required_sections:
+            with self.subTest(heading=heading):
+                section = self.section_text(document, heading)
+                substantive_lines = [
+                    line
+                    for line in section.splitlines()[1:]
+                    if line.strip() and not line.startswith("#")
+                ]
+                self.assertGreaterEqual(len(substantive_lines), 2)
+
+    def test_product_modeling_covers_path_and_semantic_dimensions(self):
+        document = self.read_foundation_document("product-and-business-modeling")
+        journey_section = self.section_text(document, "## 用户旅程")
+        for path in ("正常", "负向", "逆向", "重试", "部分成功", "批量", "权限"):
+            with self.subTest(path=path):
+                self.assertIn(path, journey_section)
+
+        state_section = self.section_text(document, "## 状态机")
+        self.assertIn("守卫条件", state_section)
+        self.assertIn("副作用", state_section)
+
+        rule_section = self.section_text(document, "## 业务规则")
+        for rule_field in ("自然语言", "公式或决策表", "正反例", "适用边界", "证据"):
+            with self.subTest(rule_field=rule_field):
+                self.assertIn(rule_field, rule_section)
+
+        for semantic in (
+            "金额语义",
+            "数量语义",
+            "时间语义",
+            "身份语义",
+            "租户语义",
+            "可见性语义",
+            "历史语义",
+            "删除语义",
+        ):
+            with self.subTest(semantic=semantic):
+                self.assertRegex(document, rf"(?m)^### {semantic}$")
+                section = self.section_text(document, f"### {semantic}")
+                substantive_lines = [
+                    line
+                    for line in section.splitlines()[1:]
+                    if line.strip() and not line.startswith("#")
+                ]
+                self.assertGreaterEqual(len(substantive_lines), 2)
+
+    def test_product_modeling_separates_rewrite_and_competitor_outputs(self):
+        document = self.read_foundation_document("product-and-business-modeling")
+        rewrite_section = self.section_text(document, "## 重写输出")
+        competitor_section = self.section_text(document, "## 竞品输出")
+        self.assertIn("观察不会自动成为需求", rewrite_section)
+        self.assertIn("观察不会自动成为战略判断", competitor_section)
 
     def test_foundation_documents_use_only_relative_links_and_no_placeholders(self):
         placeholder_pattern = re.compile(r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
