@@ -305,7 +305,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "运行时实验",
             "业务语义综合",
             "完整性、冲突与质量审计",
-            "冻结与重写/竞品映射",
+            "冻结与目的映射",
             "增量校准与方法学习",
         )
         required_subheadings = (
@@ -335,6 +335,76 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "规则 → 实验 → 决策 → 验收",
             document,
         )
+
+    def test_phase_4_uses_placeholders_until_later_phases_complete_trace_loop(self):
+        document = self.read_foundation_document("end-to-end-workflow")
+        phase_4 = self.section_text(document, "### Phase 4")
+        self.assertIn("计划/候选占位节点", phase_4)
+        self.assertIn("未执行节点不得标为已完成或已确认", phase_4)
+
+        phase_4_exit_gate = self.section_text(phase_4, "#### 退出门禁")
+        self.assertIn("不得宣称最小追踪闭环已经完成", phase_4_exit_gate)
+
+        phase_8 = self.section_text(document, "### Phase 8")
+        phase_8_exit_gate = self.section_text(phase_8, "#### 退出门禁")
+        self.assertIn("完整闭环门禁", phase_8_exit_gate)
+        self.assertIn("实验或静态替代验证", phase_8_exit_gate)
+
+    def test_phase_5_allows_a_governed_static_only_branch(self):
+        document = self.read_foundation_document("end-to-end-workflow")
+        phase_5 = self.section_text(document, "### Phase 5")
+        static_branch = self.section_text(
+            phase_5, "##### 无运行授权的静态分支"
+        )
+        for permitted_reason in (
+            "授权未覆盖运行",
+            "合法环境不可用",
+            "依赖或硬件无法安全复现",
+            "副作用无法隔离",
+        ):
+            with self.subTest(permitted_reason=permitted_reason):
+                self.assertIn(permitted_reason, static_branch)
+        for required_record in (
+            "非运行验证记录",
+            "运行证据缺口记录",
+            "ART-P5-STATIC",
+            "ART-P5-RUNTIME-GAP",
+            "风险接受人",
+            "适用期限",
+            "重新打开条件",
+        ):
+            with self.subTest(required_record=required_record):
+                self.assertIn(required_record, static_branch)
+        self.assertIn("允许进入 Phase 6", static_branch)
+        self.assertIn("不得标为 `runtime-confirmed`", static_branch)
+
+        phase_5_exit_gate = self.section_text(phase_5, "#### 退出门禁")
+        self.assertIn("运行分支", phase_5_exit_gate)
+        self.assertIn("静态分支", phase_5_exit_gate)
+
+    def test_phase_8_maps_every_supported_project_purpose(self):
+        document = self.read_foundation_document("end-to-end-workflow")
+        phase_8 = self.section_text(document, "### Phase 8")
+        purpose_mapping = self.section_text(
+            phase_8, "#### 目的专用映射与交付"
+        )
+        purpose_artifacts = {
+            "rewrite": "ART-P8-REWRITE",
+            "migration": "ART-P8-MIGRATION",
+            "replacement": "ART-P8-REPLACEMENT",
+            "acquisition due diligence": "ART-P8-DUE-DILIGENCE",
+            "competitor research": "ART-P8-COMPETITOR",
+        }
+        for purpose, artifact in purpose_artifacts.items():
+            with self.subTest(purpose=purpose):
+                self.assertRegex(
+                    purpose_mapping,
+                    rf"(?m)^\| `{re.escape(purpose)}` \| .+ `{artifact}` \| .+ \|$",
+                )
+        self.assertIn("完成条件", purpose_mapping)
+
+        phase_8_exit_gate = self.section_text(phase_8, "#### 退出门禁")
+        self.assertIn("每个已选主要目的", phase_8_exit_gate)
 
     def test_product_modeling_defines_substantive_model_sections(self):
         document = self.read_foundation_document("product-and-business-modeling")
@@ -447,6 +517,31 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             with self.subTest(heading=heading):
                 section = self.section_text(guide, heading)
                 self.assertIn("证据成熟度：`proposed`", section)
+
+    def test_guide_separates_reading_order_from_execution_order(self):
+        guide = self.read_guide()
+        reading_order = self.section_text(guide, "### 阅读顺序")
+        workflow_position = reading_order.index("(core/end-to-end-workflow.md)")
+        for foundation_link in (
+            "(core/goals-scope-and-completion.md)",
+            "(core/authorization-privacy-and-safety.md)",
+            "(core/evidence-and-confidence.md)",
+            "(glossary.md)",
+        ):
+            with self.subTest(foundation_link=foundation_link):
+                self.assertLess(
+                    reading_order.index(foundation_link), workflow_position
+                )
+
+        execution_order = self.section_text(guide, "### 执行顺序")
+        self.assertIn(
+            "必须先完成 Phase 0，之后才可采集任何证据",
+            execution_order,
+        )
+        self.assertIn(
+            "产品与业务建模从 Phase 2 开始迭代，并在 Phase 6 综合",
+            execution_order,
+        )
 
     def test_root_readme_links_the_guide(self):
         readme = self.read_repo_file("README.md")
