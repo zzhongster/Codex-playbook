@@ -94,50 +94,82 @@
   },
   "gates": {
     "G0": {
+      "gate_id": "G0",
       "gate_record_reference": {"id": "gate:sample.g0", "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
       "verdict": "pass",
-      "evidence_references": ["evidence:sample.authorization"]
+      "reviewer": "Sample G0 reviewer",
+      "decided_at": "2026-01-15T09:00:00Z",
+      "evidence_references": ["evidence:sample.authorization"],
+      "not_applicable_approval": null
     },
     "G1": {
+      "gate_id": "G1",
       "gate_record_reference": {"id": "gate:sample.g1", "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
       "verdict": "pass",
-      "evidence_references": ["evidence:sample.baseline"]
+      "reviewer": "Sample G1 reviewer",
+      "decided_at": "2026-01-15T09:05:00Z",
+      "evidence_references": ["evidence:sample.baseline"],
+      "not_applicable_approval": null
     },
     "G2": {
+      "gate_id": "G2",
       "gate_record_reference": {"id": "gate:sample.g2", "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
       "verdict": "pass",
-      "evidence_references": ["evidence:sample.atlas"]
+      "reviewer": "Sample G2 reviewer",
+      "decided_at": "2026-01-15T09:10:00Z",
+      "evidence_references": ["evidence:sample.atlas"],
+      "not_applicable_approval": null
     },
     "G3": {
+      "gate_id": "G3",
       "gate_record_reference": {"id": "gate:sample.g3", "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
       "verdict": "pass",
-      "evidence_references": ["evidence:sample.product-trace"]
+      "reviewer": "Sample G3 reviewer",
+      "decided_at": "2026-01-15T09:15:00Z",
+      "evidence_references": ["evidence:sample.product-trace"],
+      "not_applicable_approval": null
     },
     "G4": {
+      "gate_id": "G4",
       "gate_record_reference": {"id": "gate:sample.g4", "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
       "verdict": "pass",
-      "evidence_references": ["evidence:sample.semantics"]
+      "reviewer": "Sample G4 reviewer",
+      "decided_at": "2026-01-15T09:20:00Z",
+      "evidence_references": ["evidence:sample.semantics"],
+      "not_applicable_approval": null
     },
     "G5": {
+      "gate_id": "G5",
       "gate_record_reference": {"id": "gate:sample.g5", "sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"},
       "verdict": "pass",
+      "reviewer": "Sample G5 reviewer",
+      "decided_at": "2026-01-15T09:25:00Z",
       "selected_branch": "approved-static",
       "runtime_confirmation_status": "unavailable-with-approved-static-ceiling",
       "static_non_runtime_coverage": {
         "gap_artifact_reference": {"id": "artifact:sample.runtime-gap", "sha256": "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"},
         "gap_count": 4
       },
-      "evidence_references": ["evidence:sample.static-acceptance"]
+      "evidence_references": ["evidence:sample.static-acceptance"],
+      "not_applicable_approval": null
     },
     "G6": {
+      "gate_id": "G6",
       "gate_record_reference": {"id": "gate:sample.g6", "sha256": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
       "verdict": "pending",
-      "evidence_references": []
+      "reviewer": "Sample G6 reviewer",
+      "decided_at": null,
+      "evidence_references": [],
+      "not_applicable_approval": null
     },
     "G7": {
+      "gate_id": "G7",
       "gate_record_reference": {"id": "gate:sample.g7", "sha256": "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"},
       "verdict": "pending",
-      "evidence_references": []
+      "reviewer": "Sample G7 reviewer",
+      "decided_at": null,
+      "evidence_references": [],
+      "not_applicable_approval": null
     }
   },
   "owner": "Sample coverage owner",

@@ -2,8 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.example.invalid/product-reverse-engineering/coverage-summary.schema.json",
   "title": "覆盖与门禁汇总",
+  "$comment": "仓库验证器实现覆盖桶总和与 Gate 身份唯一性语义；每个 Gate 决策须可审计，G5 保留运行时/批准静态双轴。",
   "type": "object",
   "additionalProperties": false,
+  "x-coverage-gates-are-consistent": true,
   "required": [
     "schema_version",
     "record_id",
@@ -165,8 +167,8 @@
     "coverageDimension": {
       "type": "object",
       "additionalProperties": false,
-      "x-numerator-not-above-denominator": true,
-      "$comment": "Portable JSON Schema cannot compare sibling numbers; the repository validator implements x-numerator-not-above-denominator and rejects numerator > denominator.",
+      "x-coverage-buckets-fit-denominator": true,
+      "$comment": "Portable JSON Schema cannot sum sibling numbers; the repository validator rejects numerator + unknown_count + conflicting_count + excluded_count > denominator.",
       "required": [
         "denominator",
         "numerator",
@@ -201,38 +203,167 @@
         }
       }
     },
+    "notApplicableApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_reference",
+        "approved_by",
+        "reason",
+        "expires_at",
+        "reopen_condition"
+      ],
+      "properties": {
+        "approval_reference": {
+          "allOf": [
+            {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+            },
+            {
+              "pattern": "^decision:"
+            }
+          ]
+        },
+        "approved_by": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+        },
+        "reason": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+        },
+        "expires_at": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/timestamp"
+        },
+        "reopen_condition": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
+        }
+      }
+    },
     "gate": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "gate_id",
         "gate_record_reference",
         "verdict",
-        "evidence_references"
+        "reviewer",
+        "decided_at",
+        "evidence_references",
+        "not_applicable_approval"
       ],
       "properties": {
+        "gate_id": {
+          "enum": [
+            "G0",
+            "G1",
+            "G2",
+            "G3",
+            "G4",
+            "G5",
+            "G6",
+            "G7"
+          ]
+        },
         "gate_record_reference": {
           "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/artifactReference"
         },
         "verdict": {
           "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/gateVerdict"
         },
+        "reviewer": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+        },
+        "decided_at": {
+          "oneOf": [
+            {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "evidence_references": {
           "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+        },
+        "not_applicable_approval": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notApplicableApproval"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "verdict": {
+                "const": "pending"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "decided_at": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "decided_at": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/timestamp"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verdict": {
+                "const": "not-applicable"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "not_applicable_approval": {
+                "$ref": "#/$defs/notApplicableApproval"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "not_applicable_approval": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "g5Gate": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "gate_id",
         "gate_record_reference",
         "verdict",
+        "reviewer",
+        "decided_at",
         "selected_branch",
         "runtime_confirmation_status",
         "static_non_runtime_coverage",
-        "evidence_references"
+        "evidence_references",
+        "not_applicable_approval"
       ],
       "properties": {
+        "gate_id": {
+          "const": "G5"
+        },
         "gate_record_reference": {
           "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/artifactReference"
         },
@@ -241,6 +372,19 @@
             "pending",
             "pass",
             "fail"
+          ]
+        },
+        "reviewer": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
+        },
+        "decided_at": {
+          "oneOf": [
+            {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "selected_branch": {
@@ -282,8 +426,36 @@
         },
         "evidence_references": {
           "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+        },
+        "not_applicable_approval": {
+          "type": "null"
         }
       },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "verdict": {
+                "const": "pending"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "decided_at": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "decided_at": {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/timestamp"
+              }
+            }
+          }
+        }
+      ],
       "oneOf": [
         {
           "properties": {

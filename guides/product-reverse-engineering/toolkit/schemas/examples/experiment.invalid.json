@@ -1,140 +1,79 @@
 {
   "schema_version": "1.0.0",
-  "record_id": "experiment:sample.order-validation",
+  "record_id": "experiment:sample.incomplete-reproduction",
   "protocol": {
     "artifact_type": "ART-P5-PROTOCOL",
-    "artifact_id": "artifact:sample.order-protocol",
-    "content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
-    "status": "frozen",
-    "created_at": "2026-01-15T09:00:00Z",
-    "owner": "Sample experiment owner",
+    "artifact_id": "artifact:sample.incomplete-protocol",
+    "record_id": "artifact:sample.incomplete-protocol",
+    "content_hash": "sha256:1414141414141414141414141414141414141414141414141414141414141414",
     "product_version": "sample-build-1",
     "scope_or_module": "scope:sample.orders",
-    "evidence_references": [
-      "evidence:sample.lab-baseline"
-    ],
+    "status": "frozen",
+    "created_at": "2026-01-15T09:00:00Z",
+    "evidence_references": ["evidence:sample.lab-baseline"],
+    "owner": "Sample experiment owner",
+    "validation_method": "Repeat with an independent named executor.",
+    "last_updated": "2026-01-15",
+    "claim_references": ["claim:sample.order-created"],
+    "method_definitions": [{"method_id": "method:sample.experiment-reproduction", "method_maturity": "proposed"}],
+    "evidence_method_entries": [{"evidence_id": "evidence:sample.lab-baseline", "method_id": "method:sample.experiment-reproduction"}],
     "authorization_record_id": "artifact:sample.authorization",
-    "authorization_gate_record_id": "gate:sample.authorization-pass",
-    "environment_identity": {
-      "environment_id": "environment:sample.lab",
-      "build_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
-      "configuration_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    "authorization_gate_record_id": "artifact:sample.authorization-gate",
+    "environment_identity": "environment:sample.lab with immutable hashes",
+    "pre_state_fingerprint": "sha256:1515151515151515151515151515151515151515151515151515151515151515",
+    "fingerprints": {"source": "source:fingerprint", "artifact": "artifact:fingerprint", "clone": "not-applicable: no clone"},
+    "sentinel": "SYNTHETIC-ORDER-BETA",
+    "action_permissions": {
+      "read": {"verdict": "authorized", "authorization_reference": "artifact:sample.authorization-gate"},
+      "write": {"verdict": "authorized", "authorization_reference": "artifact:sample.authorization-gate"},
+      "fault-injection": {"verdict": "not-authorized", "authorization_reference": "artifact:sample.authorization-gate"},
+      "egress": {"verdict": "not-authorized", "authorization_reference": "artifact:sample.authorization-gate"},
+      "cleanup": {"verdict": "authorized", "authorization_reference": "artifact:sample.authorization-gate"}
     },
-    "baseline": {
-      "fingerprint": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
-      "evidence_references": [
-        "evidence:sample.lab-baseline"
-      ]
-    },
-    "sentinel": "SYNTHETIC-ORDER-ALPHA",
-    "steps": [
-      {
-        "step_id": "step:sample.submit-order",
-        "action": "Submit one approved synthetic order.",
-        "observation_points": [
-          "Visible response"
-        ],
-        "stop_condition": "Stop on any unapproved external effect."
-      }
-    ],
-    "expected_observations": [
-      {
-        "observation_id": "observation:sample.expected-created",
-        "surface": "ui",
-        "statement": "The synthetic order displays the created state.",
-        "evidence_references": []
-      }
-    ],
-    "cleanup_plan": {
-      "reverse_order_steps": [
-        "Reverse the synthetic order using the approved cleanup action."
-      ],
-      "residual_check": "Search approved surfaces for the experiment sentinel."
-    },
-    "validation_method": {
-      "method_id": "method:sample.experiment-reproduction",
-      "description": "Repeat the frozen protocol with an independent operator.",
-      "reproducible": true
-    }
+    "operational_limits": {"cost": "one synthetic order", "rate": "one request per minute", "blast_radius": "one isolated tenant"},
+    "recovery": {"recovery_point": "snapshot:sample.pre-order", "owner": "Sample recovery owner", "max_restore_time": "PT10M"},
+    "target_claim_references": ["claim:sample.order-created"],
+    "protocol_frozen_at": "2026-01-15T09:00:00Z",
+    "role_and_test_account": {"role": "Synthetic tester", "test_account_id": "account:sample.order-tester"},
+    "inputs": [{"input_id": "input:sample.synthetic-order", "value_or_fingerprint": "synthetic:fingerprint", "data_classification": "synthetic"}],
+    "alternative_explanations": [{"explanation_id": "explanation:sample.cached-state", "statement": "A cache could imitate success.", "distinguishing_evidence_needed": "Read back after refresh."}],
+    "variables": [{"name": "quantity", "controlled_value": "1.0000", "uncontrolled_limit": "none"}],
+    "wait_conditions": [{"condition": "A terminal response appears.", "timeout": "PT30S", "on_timeout": "Stop and capture approved evidence."}],
+    "tool_versions": [{"tool": "Sample client", "version": "1.0.0", "configuration_hash": "not-applicable: default configuration"}],
+    "forbidden_side_effects": [{"effect": "External write", "detection": "Inspect egress counters.", "stop_response": "Stop and disclose."}],
+    "reproduction_criteria": {"required_runs": 2, "independent_executor_required": true, "environment_equivalence_rule": "Same immutable build.", "tolerance_rule": "Exact state and sentinel."},
+    "protocol_steps": [{"step_id": "step:sample.submit-order", "action": "Submit one synthetic order.", "input": "input:sample.synthetic-order", "observation_points": ["Visible response"], "stop_condition": "Stop on unapproved effect."}],
+    "expected_observations": [{"observation_id": "observation:sample.expected-created", "surface": "ui", "expected": "Created state", "tolerance": "exact"}]
   },
   "result": {
     "artifact_type": "ART-P5-RESULT",
-    "artifact_id": "artifact:sample.order-result",
-    "content_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+    "artifact_id": "artifact:sample.incomplete-result",
+    "content_hash": "sha256:1616161616161616161616161616161616161616161616161616161616161616",
     "status": "active",
     "created_at": "2026-01-15T09:10:00Z",
     "owner": "Sample result owner",
     "product_version": "sample-build-1",
     "scope_or_module": "scope:sample.orders",
-    "evidence_references": [
-      "evidence:sample.order-response"
-    ],
-    "protocol_reference": {
-      "protocol_id": "artifact:sample.order-protocol",
-      "protocol_content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
-    },
-    "observations": [
-      {
-        "observation_id": "observation:sample.actual-created",
-        "surface": "ui",
-        "statement": "The synthetic order displayed the created state.",
-        "evidence_references": [
-          "evidence:sample.order-response"
-        ]
-      }
-    ],
-    "first_failure": {
-      "present": false,
-      "preserved_before_retry": false,
-      "evidence_references": []
-    },
-    "verdict": "pass"
+    "evidence_references": ["evidence:sample.order-response"],
+    "protocol_reference": {"protocol_id": "artifact:sample.incomplete-protocol", "protocol_content_hash": "sha256:1414141414141414141414141414141414141414141414141414141414141414"},
+    "run_results": [{"run_id": "run:sample.primary", "started_at": "2026-01-15T09:01:00Z", "ended_at": "2026-01-15T09:02:00Z", "executor": "Sample primary executor", "environment_identity": "environment:sample.lab", "random_seed": "not-applicable", "sample_selection": "one synthetic input", "result": "passed", "actual_observations": ["Created"], "deviations": [], "evidence_references": ["evidence:sample.order-response"]}],
+    "independent_reproduction_results": [],
+    "first_failure": {"present": false, "run_id": null, "captured_at": null, "observation_surfaces": [], "correlation_ids": [], "evidence_references": [], "preserved_before_retry": false}
   },
   "effects": {
     "artifact_type": "ART-P5-EFFECTS",
-    "artifact_id": "artifact:sample.order-effects",
-    "content_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "artifact_id": "artifact:sample.incomplete-effects",
+    "content_hash": "sha256:1717171717171717171717171717171717171717171717171717171717171717",
     "status": "active",
     "created_at": "2026-01-15T09:15:00Z",
     "owner": "Sample cleanup owner",
     "product_version": "sample-build-1",
     "scope_or_module": "scope:sample.orders",
-    "evidence_references": [
-      "evidence:sample.cleanup-check"
-    ],
-    "protocol_reference": {
-      "protocol_id": "artifact:sample.order-protocol",
-      "protocol_content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
-    },
-    "side_effects": [
-      {
-        "effect_id": "effect:sample.synthetic-order-row",
-        "kind": "write",
-        "target": "Synthetic order store",
-        "occurred": true,
-        "disposition": "reversed",
-        "evidence_references": [
-          "evidence:sample.cleanup-check"
-        ]
-      }
-    ],
-    "cleanup": {
-      "steps": [
-        "Reverse the synthetic order."
-      ],
-      "evidence_references": [
-        "evidence:sample.cleanup-check"
-      ]
-    },
-    "residual_checks": [
-      {
-        "surface": "Authorized synthetic order store",
-        "result": "clear",
-        "evidence_references": [
-          "evidence:sample.cleanup-check"
-        ]
-      }
-    ]
+    "evidence_references": ["evidence:sample.cleanup-check"],
+    "protocol_reference": {"protocol_id": "artifact:sample.incomplete-protocol", "protocol_content_hash": "sha256:1414141414141414141414141414141414141414141414141414141414141414"},
+    "side_effect_records": [{"effect_id": "effect:sample.synthetic-order-row", "kind": "write", "target": "Isolated synthetic store", "occurred": true, "reversal_action": "Delete synthetic row.", "recovery_validation": "Verify sentinel absence.", "owner": "Sample cleanup owner", "disposition": "deleted", "disposition_proof_references": ["evidence:sample.cleanup-check"]}],
+    "cleanup": {"steps": [{"step_id": "cleanup-step:sample.delete-order", "action": "Delete in reverse order.", "verification": "Search sentinel."}], "result": "passed", "disposition_proof_references": ["evidence:sample.cleanup-check"]},
+    "residual_checks": {"checks": [{"surface": "Authorized synthetic store", "sentinel_query": "Search SYNTHETIC-ORDER-BETA", "expected": "none", "actual": "none", "difference": "none"}], "result": "passed", "evidence_references": ["evidence:sample.cleanup-check"]}
   },
   "owner": "Sample experiment owner",
   "last_updated": "2026-01-15"

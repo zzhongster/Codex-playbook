@@ -370,18 +370,27 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 for schema_name, path in SCHEMA_DOCUMENTS.items()
             }
 
-        def numerator_not_above_denominator(
+        def coverage_buckets_fit_denominator(
             validator, enabled, instance, schema
         ):
-            if (
-                enabled
-                and isinstance(instance, dict)
-                and isinstance(instance.get("numerator"), int)
-                and isinstance(instance.get("denominator"), int)
-                and instance["numerator"] > instance["denominator"]
+            bucket_names = (
+                "numerator",
+                "unknown_count",
+                "conflicting_count",
+                "excluded_count",
+            )
+            if not enabled or not isinstance(instance, dict):
+                return
+            denominator = instance.get("denominator")
+            buckets = [instance.get(bucket) for bucket in bucket_names]
+            if type(denominator) is not int or not all(
+                type(bucket) is int for bucket in buckets
             ):
+                return
+            if sum(buckets) > denominator:
                 yield ValidationError(
-                    "numerator must not be greater than denominator"
+                    "numerator + unknown_count + conflicting_count + "
+                    "excluded_count must not exceed denominator"
                 )
 
         def experiment_artifacts_are_bound(validator, enabled, instance, schema):
@@ -394,6 +403,46 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "protocol_id": protocol.get("artifact_id"),
                 "protocol_content_hash": protocol.get("content_hash"),
             }
+            artifacts = [
+                instance.get(artifact_name)
+                for artifact_name in ("protocol", "result", "effects")
+            ]
+            complete_artifacts = [
+                artifact for artifact in artifacts if isinstance(artifact, dict)
+            ]
+            artifact_ids = [
+                artifact.get("artifact_id") for artifact in complete_artifacts
+            ]
+            artifact_hashes = [
+                artifact.get("content_hash") for artifact in complete_artifacts
+            ]
+            if len(artifact_ids) != len(set(artifact_ids)):
+                yield ValidationError("experiment artifact IDs must be unique")
+            if len(artifact_hashes) != len(set(artifact_hashes)):
+                yield ValidationError("experiment artifact hashes must be unique")
+            if protocol.get("record_id") != protocol.get("artifact_id"):
+                yield ValidationError(
+                    "protocol record_id must equal its artifact_id"
+                )
+            method_definitions = protocol.get("method_definitions")
+            if isinstance(method_definitions, list):
+                method_ids = [
+                    method.get("method_id")
+                    for method in method_definitions
+                    if isinstance(method, dict)
+                ]
+                if len(method_ids) != len(set(method_ids)):
+                    yield ValidationError(
+                        "protocol method definition IDs must be unique"
+                    )
+                for entry in protocol.get("evidence_method_entries", []):
+                    if (
+                        isinstance(entry, dict)
+                        and entry.get("method_id") not in set(method_ids)
+                    ):
+                        yield ValidationError(
+                            "evidence method entries must resolve to a declared method"
+                        )
             for artifact_name in ("result", "effects"):
                 artifact = instance.get(artifact_name)
                 if not isinstance(artifact, dict):
@@ -411,8 +460,13 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             def inner_evidence_references(value):
                 if isinstance(value, dict):
                     for key, child in value.items():
-                        if key == "evidence_references" and isinstance(child, list):
+                        if key in {
+                            "evidence_references",
+                            "disposition_proof_references",
+                        } and isinstance(child, list):
                             yield from child
+                        elif key == "evidence_id" and isinstance(child, str):
+                            yield child
                         else:
                             yield from inner_evidence_references(child)
                 elif isinstance(value, list):
@@ -435,6 +489,90 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                         f"{artifact_name} contains evidence references absent from its top-level index"
                     )
 
+            result = instance.get("result")
+            if isinstance(result, dict):
+                primary_runs = result.get("run_results")
+                independent_runs = result.get("independent_reproduction_results")
+                runs = []
+                for list_name in (
+                    "run_results",
+                    "independent_reproduction_results",
+                ):
+                    run_list = result.get(list_name)
+                    if isinstance(run_list, list):
+                        runs.extend(
+                            run for run in run_list if isinstance(run, dict)
+                        )
+                run_ids = [run.get("run_id") for run in runs]
+                if len(run_ids) != len(set(run_ids)):
+                    yield ValidationError("experiment run IDs must be unique")
+                if isinstance(primary_runs, list) and isinstance(
+                    independent_runs, list
+                ):
+                    primary_executors = {
+                        run.get("executor")
+                        for run in primary_runs
+                        if isinstance(run, dict)
+                    }
+                    independent_executors = {
+                        run.get("executor")
+                        for run in independent_runs
+                        if isinstance(run, dict)
+                    }
+                    if primary_executors & independent_executors:
+                        yield ValidationError(
+                            "independent reproduction must use a different executor"
+                        )
+                reproduction_criteria = protocol.get("reproduction_criteria")
+                if isinstance(reproduction_criteria, dict):
+                    required_runs = reproduction_criteria.get("required_runs")
+                    if type(required_runs) is int and len(runs) < required_runs:
+                        yield ValidationError(
+                            "declared runs must satisfy reproduction criteria"
+                        )
+                first_failure = result.get("first_failure")
+                if (
+                    isinstance(first_failure, dict)
+                    and first_failure.get("present") is True
+                    and first_failure.get("run_id") not in set(run_ids)
+                ):
+                    yield ValidationError(
+                        "first_failure.run_id must resolve to a declared run"
+                    )
+
+                effects = instance.get("effects")
+                cleanup = effects.get("cleanup") if isinstance(effects, dict) else None
+                if (
+                    any(run.get("result") == "passed" for run in runs)
+                    and isinstance(cleanup, dict)
+                    and cleanup.get("result") == "failed"
+                ):
+                    yield ValidationError(
+                        "a passed experiment result cannot have failed cleanup"
+                    )
+
+        def coverage_gates_are_consistent(validator, enabled, instance, schema):
+            if not enabled or not isinstance(instance, dict):
+                return
+            gates = instance.get("gates")
+            if not isinstance(gates, dict):
+                return
+            gate_record_ids = []
+            for expected_gate_id, gate in gates.items():
+                if not isinstance(gate, dict):
+                    continue
+                if gate.get("gate_id") != expected_gate_id:
+                    yield ValidationError(
+                        f"{expected_gate_id}.gate_id must equal {expected_gate_id}"
+                    )
+                reference = gate.get("gate_record_reference")
+                if isinstance(reference, dict):
+                    gate_record_ids.append(reference.get("id"))
+            if len(gate_record_ids) != len(set(gate_record_ids)):
+                yield ValidationError(
+                    "different gates must not reuse a gate record ID"
+                )
+
         def chosen_alternative_is_declared(validator, enabled, instance, schema):
             if not enabled or not isinstance(instance, dict):
                 return
@@ -446,6 +584,13 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 for alternative in alternatives
                 if isinstance(alternative, dict)
             }
+            alternative_ids = [
+                alternative.get("alternative_id")
+                for alternative in alternatives
+                if isinstance(alternative, dict)
+            ]
+            if len(alternative_ids) != len(set(alternative_ids)):
+                yield ValidationError("alternative_id values must be unique")
             if instance.get("chosen_outcome") not in declared:
                 yield ValidationError(
                     "chosen_outcome must resolve to a declared alternative_id"
@@ -454,10 +599,11 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         contract_validator = validators.extend(
             Draft202012Validator,
             {
-                "x-numerator-not-above-denominator": (
-                    numerator_not_above_denominator
+                "x-coverage-buckets-fit-denominator": (
+                    coverage_buckets_fit_denominator
                 ),
                 "x-experiment-artifacts-are-bound": experiment_artifacts_are_bound,
+                "x-coverage-gates-are-consistent": coverage_gates_are_consistent,
                 "x-chosen-alternative-is-declared": (
                     chosen_alternative_is_declared
                 ),
@@ -2615,6 +2761,89 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         not_applicable["gates"]["G5"]["verdict"] = "not-applicable"
         self.assertTrue(list(validator.iter_errors(not_applicable)))
 
+    def test_coverage_schema_enforces_bucket_and_gate_identity_contracts(self):
+        self.require_all_schemas_and_examples()
+        coverage = self.read_json_file(
+            SCHEMA_EXAMPLES["coverage-summary"]["valid"]
+        )
+        validator = self.schema_validator("coverage-summary")
+        gate_record_ids = []
+        for gate_id, gate in coverage["gates"].items():
+            with self.subTest(gate=gate_id):
+                self.assertTrue(
+                    {
+                        "gate_id",
+                        "reviewer",
+                        "decided_at",
+                        "evidence_references",
+                    }.issubset(gate)
+                )
+                self.assertEqual(gate_id, gate["gate_id"])
+                self.assertTrue(gate["reviewer"].strip())
+                if gate["verdict"] == "pending":
+                    self.assertIsNone(gate["decided_at"])
+                else:
+                    self.assertIsInstance(gate["decided_at"], str)
+                    self.assertTrue(gate["decided_at"].strip())
+                gate_record_ids.append(gate["gate_record_reference"]["id"])
+        self.assertEqual(len(gate_record_ids), len(set(gate_record_ids)))
+
+        excessive_buckets = copy.deepcopy(coverage)
+        excessive_buckets["dimensions"]["product"].update(
+            {
+                "denominator": 6,
+                "numerator": 5,
+                "unknown_count": 2,
+                "conflicting_count": 0,
+                "excluded_count": 0,
+            }
+        )
+        self.assertTrue(list(validator.iter_errors(excessive_buckets)))
+
+        reused_gate_record = copy.deepcopy(coverage)
+        reused_gate_record["gates"]["G2"]["gate_record_reference"] = copy.deepcopy(
+            reused_gate_record["gates"]["G1"]["gate_record_reference"]
+        )
+        self.assertTrue(list(validator.iter_errors(reused_gate_record)))
+
+        mismatched_gate_id = copy.deepcopy(coverage)
+        mismatched_gate_id["gates"]["G2"]["gate_id"] = "G1"
+        self.assertTrue(list(validator.iter_errors(mismatched_gate_id)))
+
+        pending_with_decision_time = copy.deepcopy(coverage)
+        pending_with_decision_time["gates"]["G6"][
+            "decided_at"
+        ] = "2026-01-15T12:00:00Z"
+        self.assertTrue(list(validator.iter_errors(pending_with_decision_time)))
+
+        decided_without_time = copy.deepcopy(coverage)
+        decided_without_time["gates"]["G1"]["decided_at"] = None
+        self.assertTrue(list(validator.iter_errors(decided_without_time)))
+
+        valid_not_applicable = copy.deepcopy(coverage)
+        valid_not_applicable["gates"]["G7"].update(
+            {
+                "verdict": "not-applicable",
+                "decided_at": "2026-01-15T12:00:00Z",
+                "not_applicable_approval": {
+                    "approval_reference": "decision:sample.g7-not-applicable",
+                    "approved_by": "Sample release owner",
+                    "reason": "The approved sample scope has no release operation.",
+                    "expires_at": "2026-06-30T00:00:00Z",
+                    "reopen_condition": "Reopen when a release target enters scope."
+                },
+            }
+        )
+        self.assertEqual([], list(validator.iter_errors(valid_not_applicable)))
+
+        missing_not_applicable_approval = copy.deepcopy(valid_not_applicable)
+        missing_not_applicable_approval["gates"]["G7"][
+            "not_applicable_approval"
+        ] = None
+        self.assertTrue(
+            list(validator.iter_errors(missing_not_applicable_approval))
+        )
+
     def test_experiment_schema_requires_three_bound_immutable_artifacts(self):
         self.require_all_schemas_and_examples()
         experiment = self.read_json_file(
@@ -2637,16 +2866,212 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertTrue(list(validator.iter_errors(divergent_context)))
 
         undeclared_inner_evidence = copy.deepcopy(experiment)
-        undeclared_inner_evidence["result"]["observations"][0][
+        undeclared_inner_evidence["result"]["run_results"][0][
             "evidence_references"
         ] = ["evidence:sample.not-in-result-index"]
         self.assertTrue(list(validator.iter_errors(undeclared_inner_evidence)))
+
+    def test_experiment_schema_matches_task10_three_artifact_contract(self):
+        self.require_all_schemas_and_examples()
+        fixture = self.read_json_file(SCHEMA_EXAMPLES["experiment"]["valid"])
+        template_artifacts = self.parse_all_yaml_metadata(
+            self.read_template_document("experiment-record")
+        )
+        template_by_type = {
+            artifact["artifact_type"]: artifact for artifact in template_artifacts
+        }
+        fixture_by_type = {
+            fixture[name]["artifact_type"]: fixture[name]
+            for name in ("protocol", "result", "effects")
+        }
+        self.assertEqual(set(template_by_type), set(fixture_by_type))
+        shape_mismatches = {}
+        for artifact_type, expected in template_by_type.items():
+            expected_fields = set(expected)
+            actual_fields = set(fixture_by_type[artifact_type])
+            if expected_fields != actual_fields:
+                shape_mismatches[artifact_type] = {
+                    "missing": sorted(expected_fields - actual_fields),
+                    "extra": sorted(actual_fields - expected_fields),
+                }
+        self.assertEqual({}, shape_mismatches)
+
+        protocol = fixture["protocol"]
+        self.assertEqual(
+            {"source", "artifact", "clone"}, set(protocol["fingerprints"])
+        )
+        self.assertEqual(
+            {"read", "write", "fault-injection", "egress", "cleanup"},
+            set(protocol["action_permissions"]),
+        )
+        self.assertEqual(
+            {"cost", "rate", "blast_radius"},
+            set(protocol["operational_limits"]),
+        )
+        self.assertEqual(
+            {"recovery_point", "owner", "max_restore_time"},
+            set(protocol["recovery"]),
+        )
+        self.assertTrue(protocol["inputs"])
+        self.assertTrue(protocol["alternative_explanations"])
+        self.assertTrue(protocol["variables"])
+        self.assertTrue(protocol["wait_conditions"])
+        self.assertTrue(protocol["tool_versions"])
+        self.assertTrue(protocol["forbidden_side_effects"])
+        self.assertTrue(protocol["protocol_steps"])
+        self.assertTrue(protocol["expected_observations"])
+        for observation in protocol["expected_observations"]:
+            self.assertEqual(
+                {"observation_id", "surface", "expected", "tolerance"},
+                set(observation),
+            )
+
+        result = fixture["result"]
+        self.assertTrue(result["run_results"])
+        self.assertTrue(result["independent_reproduction_results"])
+        expected_run_fields = {
+            "run_id",
+            "started_at",
+            "ended_at",
+            "executor",
+            "environment_identity",
+            "random_seed",
+            "sample_selection",
+            "result",
+            "actual_observations",
+            "deviations",
+            "evidence_references",
+        }
+        for run in (
+            *result["run_results"],
+            *result["independent_reproduction_results"],
+        ):
+            self.assertEqual(expected_run_fields, set(run))
+        self.assertEqual(
+            {
+                "present",
+                "run_id",
+                "captured_at",
+                "observation_surfaces",
+                "correlation_ids",
+                "evidence_references",
+                "preserved_before_retry",
+            },
+            set(result["first_failure"]),
+        )
+
+        effects = fixture["effects"]
+        self.assertTrue(effects["side_effect_records"])
+        self.assertEqual(
+            {"steps", "result", "disposition_proof_references"},
+            set(effects["cleanup"]),
+        )
+        self.assertEqual(
+            {"checks", "result", "evidence_references"},
+            set(effects["residual_checks"]),
+        )
+
+    def test_experiment_schema_rejects_artifact_run_and_cleanup_conflicts(self):
+        self.require_all_schemas_and_examples()
+        experiment = self.read_json_file(
+            SCHEMA_EXAMPLES["experiment"]["valid"]
+        )
+        validator = self.schema_validator("experiment")
+
+        duplicate_artifact_id = copy.deepcopy(experiment)
+        duplicate_artifact_id["effects"]["artifact_id"] = (
+            duplicate_artifact_id["result"]["artifact_id"]
+        )
+        self.assertTrue(list(validator.iter_errors(duplicate_artifact_id)))
+
+        duplicate_artifact_hash = copy.deepcopy(experiment)
+        duplicate_artifact_hash["effects"]["content_hash"] = (
+            duplicate_artifact_hash["result"]["content_hash"]
+        )
+        self.assertTrue(list(validator.iter_errors(duplicate_artifact_hash)))
+
+        no_independent_reproduction = copy.deepcopy(experiment)
+        no_independent_reproduction["result"][
+            "independent_reproduction_results"
+        ] = []
+        self.assertTrue(list(validator.iter_errors(no_independent_reproduction)))
+
+        reused_executor = copy.deepcopy(experiment)
+        reused_executor["result"]["independent_reproduction_results"][0][
+            "executor"
+        ] = reused_executor["result"]["run_results"][0]["executor"]
+        self.assertTrue(list(validator.iter_errors(reused_executor)))
+
+        insufficient_required_runs = copy.deepcopy(experiment)
+        insufficient_required_runs["protocol"]["reproduction_criteria"][
+            "required_runs"
+        ] = 3
+        self.assertTrue(list(validator.iter_errors(insufficient_required_runs)))
+
+        unresolved_method_mapping = copy.deepcopy(experiment)
+        unresolved_method_mapping["protocol"]["evidence_method_entries"][0][
+            "method_id"
+        ] = "method:sample.not-declared"
+        self.assertTrue(list(validator.iter_errors(unresolved_method_mapping)))
+
+        unknown_failure_run = copy.deepcopy(experiment)
+        unknown_failure_run["result"]["first_failure"].update(
+            {
+                "present": True,
+                "run_id": "run:sample.not-declared",
+                "captured_at": "2026-01-15T09:11:00Z",
+                "observation_surfaces": ["log"],
+                "correlation_ids": ["synthetic-correlation-1"],
+                "evidence_references": ["evidence:sample.order-response"],
+                "preserved_before_retry": True,
+            }
+        )
+        self.assertTrue(list(validator.iter_errors(unknown_failure_run)))
+
+        passed_with_failed_cleanup = copy.deepcopy(experiment)
+        passed_with_failed_cleanup["effects"]["cleanup"]["result"] = "failed"
+        self.assertTrue(list(validator.iter_errors(passed_with_failed_cleanup)))
+
+        missing_action_permission = copy.deepcopy(experiment)
+        del missing_action_permission["protocol"]["action_permissions"][
+            "fault-injection"
+        ]
+        self.assertTrue(list(validator.iter_errors(missing_action_permission)))
+
+        missing_expected_tolerance = copy.deepcopy(experiment)
+        del missing_expected_tolerance["protocol"]["expected_observations"][0][
+            "tolerance"
+        ]
+        self.assertTrue(list(validator.iter_errors(missing_expected_tolerance)))
+
+        missing_reversal_action = copy.deepcopy(experiment)
+        del missing_reversal_action["effects"]["side_effect_records"][0][
+            "reversal_action"
+        ]
+        self.assertTrue(list(validator.iter_errors(missing_reversal_action)))
 
     def test_decision_chosen_outcome_must_resolve_to_a_declared_alternative(self):
         self.require_all_schemas_and_examples()
         decision = self.read_json_file(SCHEMA_EXAMPLES["decision"]["valid"])
         decision["chosen_outcome"] = "alternative:sample.not-declared"
         self.assertTrue(list(self.schema_validator("decision").iter_errors(decision)))
+
+    def test_decision_schema_rejects_duplicate_or_mistyped_decision_links(self):
+        self.require_all_schemas_and_examples()
+        decision = self.read_json_file(SCHEMA_EXAMPLES["decision"]["valid"])
+        validator = self.schema_validator("decision")
+
+        duplicate_alternative = copy.deepcopy(decision)
+        duplicate = copy.deepcopy(duplicate_alternative["alternatives"][0])
+        duplicate["description"] = "A second description with the same ID."
+        duplicate_alternative["alternatives"].append(duplicate)
+        self.assertTrue(list(validator.iter_errors(duplicate_alternative)))
+
+        mistyped_supersession = copy.deepcopy(decision)
+        mistyped_supersession["supersedes_decision_id"] = (
+            "asset:sample.previous-decision"
+        )
+        self.assertTrue(list(validator.iter_errors(mistyped_supersession)))
 
     def test_schema_examples_are_synthetic_and_contain_no_secret_shaped_fields(self):
         self.require_all_schemas_and_examples()

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.example.invalid/product-reverse-engineering/decision.schema.json",
   "title": "人类决定记录",
-  "$comment": "仓库验证器实现 x-chosen-alternative-is-declared，保证 chosen_outcome 解析到 alternatives 中的 ID。",
+  "$comment": "仓库验证器实现 x-chosen-alternative-is-declared，保证 alternative_id 唯一且 chosen_outcome 解析到 alternatives 中的 ID。",
   "type": "object",
   "additionalProperties": false,
   "x-chosen-alternative-is-declared": true,
@@ -63,7 +63,14 @@
         ],
         "properties": {
           "alternative_id": {
-            "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+            "allOf": [
+              {
+                "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+              },
+              {
+                "pattern": "^alternative:"
+              }
+            ]
           },
           "description": {
             "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/nonEmptyString"
@@ -86,7 +93,14 @@
       }
     },
     "chosen_outcome": {
-      "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+      "allOf": [
+        {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+        },
+        {
+          "pattern": "^alternative:"
+        }
+      ]
     },
     "owner": {
       "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/owner"
@@ -171,7 +185,14 @@
     "supersedes_decision_id": {
       "oneOf": [
         {
-          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+          "allOf": [
+            {
+              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+            },
+            {
+              "pattern": "^decision:"
+            }
+          ]
         },
         {
           "type": "null"
