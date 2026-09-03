@@ -102,6 +102,15 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertTrue(match.group(1).strip())
 
+    def assert_phase_summary_self_hash_invariant(self, document):
+        phase_summary = self.section_text(document, "## 阶段摘要记录")
+        self.assertIn("阶段摘要是独立包络", phase_summary)
+        self.assertIn(
+            "不得列入自身的 `output allow-list and hashes`",
+            phase_summary,
+        )
+        self.assertIn("摘要哈希只出现在父摘要或冻结清单", phase_summary)
+
     def test_required_entry_files_exist(self):
         for path in REQUIRED_ENTRY_FILES:
             self.assertTrue(path.is_file(), f"missing required entry file: {path}")
@@ -659,6 +668,70 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 row = next(line for line in gates.splitlines() if line.startswith(f"| `{gate}` |"))
                 self.assertGreaterEqual(len(row.split("|")), 5)
 
+    def test_gate_verdict_lifecycle_includes_pending_without_abusing_other_verdicts(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        lifecycle = self.section_text(document, "## 门禁判定生命周期")
+        verdicts = [
+            match.group(1)
+            for line in lifecycle.splitlines()
+            if (match := re.fullmatch(r"\| `([a-z-]+)` \| .+ \|", line))
+        ]
+        self.assertEqual(
+            ["pending", "pass", "fail", "not-applicable"],
+            verdicts,
+        )
+        self.assertIn("未来但仍适用的门禁保持 `pending`", lifecycle)
+        self.assertIn("不能记为 `fail` 或 `not-applicable`", lifecycle)
+
+    def test_phase_to_gate_execution_map_matches_the_workflow(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        mapping = self.section_text(document, "## Phase→Gate 执行映射")
+        expected_rows = (
+            ("Phase 0", "G0"),
+            ("Phase 1", "G1"),
+            ("Phase 2 + Phase 4", "G3"),
+            ("Phase 3", "G2"),
+            ("Phase 5", "G5"),
+            ("Phase 6", "G4"),
+            ("Phase 7", "G6"),
+            ("Phase 8", "G7"),
+            ("Phase 9", "受影响门禁"),
+        )
+        for phase, gate in expected_rows:
+            with self.subTest(phase=phase):
+                self.assertRegex(
+                    mapping,
+                    rf"(?m)^\| {re.escape(phase)} \| `{re.escape(gate)}` \| .+ \|$",
+                )
+        self.assertIn("Phase 2 后 G3 保持 `pending`", mapping)
+        self.assertIn("获批非运行分支", mapping)
+        self.assertIn("`not-applicable`", mapping)
+
+    def test_gate_records_derive_from_named_phase_artifacts_without_replacing_them(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        workflow = self.read_foundation_document("end-to-end-workflow")
+        records = self.section_text(document, "## 门禁判定记录与 Phase 产物")
+        self.assertIn("派生判定记录", records)
+        self.assertIn("绝不替代 Phase 产物", records)
+        self.assertIn("第二事实权威", records)
+        gate_record_rows = [
+            (match.group(1), match.group(2), match.group(3))
+            for line in records.splitlines()
+            if (
+                match := re.fullmatch(
+                    r"\| `(G[0-7])` \| `(ART-G[^`]+)` \| (.+) \|", line
+                )
+            )
+        ]
+        self.assertEqual([f"G{index}" for index in range(8)], [row[0] for row in gate_record_rows])
+        self.assertEqual(8, len({row[1] for row in gate_record_rows}))
+        for gate, gate_record, phase_artifacts in gate_record_rows:
+            referenced_artifacts = re.findall(r"`(ART-P[^`]+)`", phase_artifacts)
+            with self.subTest(gate=gate, gate_record=gate_record):
+                self.assertTrue(referenced_artifacts)
+                for artifact in referenced_artifacts:
+                    self.assertIn(f"`{artifact}`", workflow)
+
     def test_coverage_summaries_and_freeze_are_deterministic_and_append_only(self):
         document = self.read_foundation_document("coverage-quality-and-freeze")
         summary = self.section_text(document, "## 父子汇总与确定性生成")
@@ -705,6 +778,34 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIn("父阶段只消费不可变子摘要", phase_summary)
         self.assertIn("不得重新解释子项事实", phase_summary)
 
+    def test_phase_summary_excludes_its_own_hash_from_its_output_envelope(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        self.assert_phase_summary_self_hash_invariant(document)
+
+    def test_phase_summary_self_hash_invariant_rejects_inclusion_mutation(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        mutated = document.replace(
+            "不得列入自身的 `output allow-list and hashes`",
+            "必须列入自身的 `output allow-list and hashes`",
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_phase_summary_self_hash_invariant(mutated)
+
+    def test_artifact_and_summary_lifecycle_is_separate_from_claim_status(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        lifecycle = self.section_text(document, "## 产物与摘要生命周期")
+        lifecycle_values = [
+            match.group(1)
+            for line in lifecycle.splitlines()
+            if (match := re.fullmatch(r"\| `([a-z-]+)` \| .+ \|", line))
+        ]
+        self.assertEqual(["active", "replaced", "withdrawn"], lifecycle_values)
+        self.assertIn("`replaces`", lifecycle)
+        self.assertIn("`replaced-by`", lifecycle)
+        self.assertIn("独立于产品主张状态", lifecycle)
+        self.assertNotRegex(lifecycle, r"(?m)^\| `superseded` \|")
+        self.assertIn("产品主张的 `superseded`", lifecycle)
+
     def test_human_agent_collaboration_assigns_decision_rights(self):
         document = self.read_foundation_document("human-agent-collaboration")
         rights = self.section_text(document, "## 决策权矩阵")
@@ -732,7 +833,9 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertEqual(
             [
                 "objective",
+                "authorization record ID + content hash/version",
                 "input identity",
+                "workspace root / working directory identity",
                 "scope",
                 "denominator",
                 "allowed evidence",
@@ -745,6 +848,28 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             ],
             fields,
         )
+
+    def test_human_agent_task_packet_is_immutably_bound_to_g0_authorization(self):
+        document = self.read_foundation_document("human-agent-collaboration")
+        task_packet = self.section_text(document, "## 任务包契约")
+        for contract in (
+            "`ART-P0-AUTH`",
+            "`ART-G0-AUTH`",
+            "`allowed evidence` 必须是该授权记录的子集",
+            "人类重新授权",
+            "新的授权记录",
+            "G0 再次 `pass`",
+            "新的任务包",
+            "分派人和评审人都无权扩大",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, task_packet)
+
+    def test_readme_assigns_phase_7_and_phase_8_their_actual_gates(self):
+        execution_order = self.section_text(self.read_guide(), "### 执行顺序")
+        self.assertIn("Phase 7 执行 G6", execution_order)
+        self.assertIn("Phase 8 执行 G7", execution_order)
+        self.assertNotIn("Phase 7 用九类分母、风险队列和 G0–G7", execution_order)
 
     def test_human_agent_boundaries_keep_high_risk_decisions_human_owned(self):
         document = self.read_foundation_document("human-agent-collaboration")
