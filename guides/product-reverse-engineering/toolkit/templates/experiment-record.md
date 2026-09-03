@@ -179,7 +179,7 @@ side_effect_records:
     reversal_action: "REPLACE_WITH_REVERSAL_ACTION_OR_EXPLICIT_NONE"
     recovery_validation: "REPLACE_WITH_RECOVERY_VALIDATION"
     owner: "REPLACE_WITH_NAMED_EFFECT_OWNER"
-    disposition: "REPLACE_WITH_RETAINED_REVERSED_DELETED_OR_NOT_CREATED"
+    disposition: "not-created"
     disposition_proof_references: []
 cleanup:
   steps:
@@ -236,17 +236,17 @@ RESULT 和 EFFECTS 的 `product_version` 与 `scope_or_module` 必须逐字等�
 
 ## 预期与实际观察
 
-- 执行前冻结 expected observations；每个 run result 另填 actual observations、开始/结束时间、执行者、环境身份、随机种子、样本选择、偏差和证据 ID。
+- 执行前冻结 expected observations；每个 run result 另填 actual observations、开始/结束时间、执行者、环境身份、随机种子、样本选择、偏差和证据 ID；`ended_at` 不得早于 `started_at`。
 - independent reproduction results 与首次执行分列，记录另一执行者是否从同一协议和等价身份复现，而不复制第一次结论。
 - 界面、网络、日志、数据库、消息、缓存、文件、通知和外部效应分别记录，不用最终结果覆盖中间状态。
 
 ## 首个失败保全
 
-- 在任何自动重试前保存 first failure 的多观察面、关联 ID、时间顺序和当时状态。
+- 在任何自动重试前保存 first failure 的多观察面、关联 ID、时间顺序和当时状态。任一 run 为 `failed` 或 `mixed` 时必须保留非空实际观察和证据，并将 `first_failure.present` 置为 true，且其 run ID 必须指向本 RESULT 中的 failed/mixed run。
 - 后续尝试使用新运行序号并链接首错；最终成功不得抹去失败、部分提交或补偿证据。
 
 ## 逆序清理与残留检查
 
-- `side_effect_records` 逐项记录实际写入或外发、影响目标、是否发生、逆向动作、恢复验证、责任人、处置状态和证明；不存在副作用也要保留预期项并写 `occurred: false`。
+- `side_effect_records` 逐项记录实际写入或外发、影响目标、是否发生、逆向动作、恢复验证、责任人、处置状态和证明；不存在副作用也要保留预期项并写 `occurred: false + disposition: not-created`，已发生项只能使用 retained/reversed/deleted 并给出处置证明。
 - cleanup 按副作用逆序记录停止外发、下游撤销、队列/缓存处理、业务逆向动作和临时权限撤销，并引用 disposition proof。
 - residual checks 用哨兵核对界面、数据、日志、消息、文件、备份可达范围和外部模拟器，并记录结果、差异及证据。

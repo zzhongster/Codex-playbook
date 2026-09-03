@@ -14,7 +14,7 @@
   },
   "source": {
     "source_id": "source:sample.runtime-session",
-    "locator": "controlled://sample/evidence/order-response.json",
+    "locator": "controlled://evidence.example.invalid/order-response.json",
     "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
   },
   "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
@@ -24,7 +24,7 @@
   },
   "availability": {
     "status": "available",
-    "controlled_location": "artifact-store://sample/evidence/order-response",
+    "controlled_location": "artifact-store://evidence.example.invalid/order-response",
     "retention_until": null
   },
   "claim_relations": [

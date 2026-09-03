@@ -3,7 +3,7 @@
   "$id": "https://schemas.example.invalid/product-reverse-engineering/experiment.schema.json",
   "title": "不可变运行实验三产物集合",
   "description": "协议、结果和副作用处置是三个独立产物；字段与 experiment-record 模板的三个 YAML 产物对齐。",
-  "$comment": "仓库验证器实现 x-experiment-artifacts-are-bound，检查每个独立产物的方法与证据双向闭合、协议绑定、上下文、独立复现、运行 ID、证据索引和目标主张闭合；实验如实记录清理失败，不在本 schema 推导 G5 判定。",
+  "$comment": "仓库验证器实现 x-experiment-artifacts-are-bound，检查每个独立产物的方法与证据双向闭合、协议绑定、上下文、独立复现、运行 ID、时序、失败保全、证据索引和目标主张闭合；实验如实记录清理失败，不在本 schema 推导 G5 判定。",
   "type": "object",
   "additionalProperties": false,
   "x-experiment-artifacts-are-bound": true,
@@ -670,7 +670,11 @@
           "if": {
             "properties": {
               "result": {
-                "const": "passed"
+                "enum": [
+                  "passed",
+                  "failed",
+                  "mixed"
+                ]
               }
             }
           },
@@ -940,8 +944,22 @@
           },
           "then": {
             "properties": {
+              "disposition": {
+                "enum": [
+                  "retained",
+                  "reversed",
+                  "deleted"
+                ]
+              },
               "disposition_proof_references": {
                 "minItems": 1
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "disposition": {
+                "const": "not-created"
               }
             }
           }

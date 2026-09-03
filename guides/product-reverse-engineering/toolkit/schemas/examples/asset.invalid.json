@@ -8,7 +8,7 @@
   },
   "source": {
     "source_id": "source:sample.inventory",
-    "locator": "controlled://sample/assets/orders-service",
+    "locator": "controlled://assets.example.invalid/orders-service",
     "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
   },
   "classification": "synthetic",

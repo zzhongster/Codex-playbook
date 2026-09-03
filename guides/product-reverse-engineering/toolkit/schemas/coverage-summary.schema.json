@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.example.invalid/product-reverse-engineering/coverage-summary.schema.json",
   "title": "覆盖与门禁汇总",
-  "$comment": "仓库验证器实现覆盖桶总和与 Gate 身份唯一性语义；每个 Gate 决策须可审计，G5 保留运行时/批准静态双轴。",
+  "$comment": "仓库验证器要求每维互斥桶精确分割 denominator、Gate 身份唯一且证据方法闭合；approved-static 的 G5 gap_count 精确等于 runtime unknown_count + conflicting_count，runtime pass 则要求两者均为零。",
   "type": "object",
   "additionalProperties": false,
   "x-coverage-gates-are-consistent": true,
@@ -11,8 +11,14 @@
     "record_id",
     "version_scope",
     "status",
+    "evidence_references",
+    "claim_references",
+    "method_definitions",
+    "evidence_method_entries",
     "denominator_version",
     "calculation_rule_version",
+    "input_hashes",
+    "output_allow_list_and_hashes",
     "exclusions",
     "dimensions",
     "gates",
@@ -40,11 +46,56 @@
     "status": {
       "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/recordLifecycle"
     },
+    "evidence_references": {
+      "allOf": [
+        {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+        },
+        {
+          "minItems": 1
+        }
+      ]
+    },
+    "claim_references": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/claimId"
+      }
+    },
+    "method_definitions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/methodDefinition"
+      }
+    },
+    "evidence_method_entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/evidenceMethodEntry"
+      }
+    },
     "denominator_version": {
       "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
     },
     "calculation_rule_version": {
       "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
+    },
+    "input_hashes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/sha256"
+      }
+    },
+    "output_allow_list_and_hashes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/artifactReference"
+      }
     },
     "exclusions": {
       "type": "array",
@@ -164,11 +215,43 @@
     }
   },
   "$defs": {
+    "methodDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method_id",
+        "method_maturity"
+      ],
+      "properties": {
+        "method_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/methodId"
+        },
+        "method_maturity": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/methodMaturity"
+        }
+      }
+    },
+    "evidenceMethodEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "method_id"
+      ],
+      "properties": {
+        "evidence_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceId"
+        },
+        "method_id": {
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/methodId"
+        }
+      }
+    },
     "coverageDimension": {
       "type": "object",
       "additionalProperties": false,
       "x-coverage-buckets-fit-denominator": true,
-      "$comment": "Portable JSON Schema cannot sum sibling numbers; the repository validator rejects numerator + unknown_count + conflicting_count + excluded_count > denominator.",
+      "$comment": "The five buckets are mutually exclusive and exhaustive. The repository validator requires numerator + unknown_count + conflicting_count + excluded_count = denominator.",
       "required": [
         "denominator",
         "numerator",

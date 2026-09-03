@@ -22,7 +22,7 @@
 | 非功能覆盖 | 已批准的性能、容量、可用性、安全、隐私、可访问性和可运维属性；计入项有可测门槛、环境和结果 |
 | 追踪覆盖 | 要求的源对象—关系—目标对象链；计入项的每个节点和边有稳定 ID、状态、版本边界与证据 |
 
-每一维分别报告 `covered / approved denominator`、排除数、未知数、冲突数和静态分支数，再报告整体视图。不同单位不得直接相加形成伪精确总分；跨维总览必须说明权重、聚合公式和舍入方法。聚合数据探针只可能支持其数据或派生事实分子，不能让产品覆盖或运行时覆盖入账。
+每一维使用互斥且穷尽的四个桶，并强制 `denominator = numerator + unknown_count + conflicting_count + excluded_count`；同一叶子在同一分母版本中只能进入一个桶。静态分支是 G5 的验证分支属性，不是第五个覆盖桶。不同单位不得直接相加形成伪精确总分；跨维总览必须说明权重、聚合公式和舍入方法。聚合数据探针只可能支持其数据或派生事实分子，不能让产品覆盖或运行时覆盖入账。
 
 ## 风险分层与未知队列
 
@@ -96,6 +96,8 @@ G5 先记录所选分支，再分别计算 gate verdict 与 runtime-confirmation
 | 获批非运行分支 | `pass/fail` | `unavailable-with-approved-static-ceiling` | 只有允许理由、`ART-P5-STATIC`、`ART-P5-RUNTIME-GAP`、`ART-P5-STATIC-ACCEPTANCE`、风险接受、验证上限、适用期限、重开条件和未来验证方法均完整时 G5 `pass`，任一缺失即 `fail` |
 
 **G5 不得使用 `not-applicable`。** 非运行分支只是 runtime-confirmation status 为 `unavailable-with-approved-static-ceiling`，不是验证职责不存在；其 G5 `pass` 只证明静态替代分支治理完整，不产生 `runtime-confirmed`，也不删除后续运行证据缺口。未来验证方法至少写明可用环境/授权出现后要执行的协议、观测点、责任人和触发日期或条件。
+
+G5 与覆盖汇总采用同一确定性会计：获批非运行分支必须满足 `gap_count = runtime.unknown_count + runtime.conflicting_count`，使每个未获运行确认或仍冲突的运行项都留在 gap 产物中；运行分支只有在 runtime 的 `unknown_count` 与 `conflicting_count` 都为零时才可 `pass`。因此，静态分支批准、门禁通过或运行实验的业务结果通过都不能自行清零缺口。
 
 ## 门禁判定记录与 Phase 产物
 

@@ -9,8 +9,51 @@
     "valid_to": null
   },
   "status": "frozen",
+  "evidence_references": [
+    "evidence:sample.authorization",
+    "evidence:sample.baseline",
+    "evidence:sample.atlas",
+    "evidence:sample.product-trace",
+    "evidence:sample.semantics",
+    "evidence:sample.static-acceptance"
+  ],
+  "claim_references": [],
+  "method_definitions": [
+    {
+      "method_id": "method:sample.coverage-recalculation",
+      "method_maturity": "proposed"
+    }
+  ],
+  "evidence_method_entries": [
+    {
+      "evidence_id": "evidence:sample.authorization",
+      "method_id": "method:sample.coverage-recalculation"
+    },
+    {
+      "evidence_id": "evidence:sample.baseline",
+      "method_id": "method:sample.coverage-recalculation"
+    },
+    {
+      "evidence_id": "evidence:sample.atlas",
+      "method_id": "method:sample.coverage-recalculation"
+    },
+    {
+      "evidence_id": "evidence:sample.product-trace",
+      "method_id": "method:sample.coverage-recalculation"
+    },
+    {
+      "evidence_id": "evidence:sample.semantics",
+      "method_id": "method:sample.coverage-recalculation"
+    },
+    {
+      "evidence_id": "evidence:sample.static-acceptance",
+      "method_id": "method:sample.coverage-recalculation"
+    }
+  ],
   "denominator_version": "denominator:sample.release-one",
   "calculation_rule_version": "rule:sample.coverage-v1",
+  "input_hashes": [],
+  "output_allow_list_and_hashes": [],
   "exclusions": [
     {
       "item_id": "surface:sample.archived-report",
