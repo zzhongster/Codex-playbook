@@ -1,18 +1,20 @@
 # Delphi 桌面产品逆向工程指南
 
-**证据成熟度：`project-validated`**
+**证据成熟度：`proposed`**
 
 **适用范围：** 已获授权分析的经典 Delphi/VCL Win32 桌面产品，包括拥有完整或部分 DPR、PAS、DFM 源码，以及只能取得 DCU、BPL、DLL、EXE、资源、配置、数据库或安装包的遗留系统。
 
 本指南把通用灰盒/白盒访问方法落到 Delphi 桌面栈，并要求按可用证据选择轨道。开始前仍须执行[授权、隐私与安全](../core/authorization-privacy-and-safety.md)的 G0，并使用[证据与置信度](../core/evidence-and-confidence.md)的证据项、主张状态和类型化追踪链接。它不授权破解许可证、规避访问控制、提取凭据、接触生产数据或对生产数据库做实验。
 
-## 已验证项目经验
+## 来源项目观察与证据缺口
 
-**段落依据：`project-validated`**
+**证据标记：`source-project-observation`；通用指南链接：`pending`**
 
-这些方法在一个 Delphi 5、VCL、COM/MIDAS 与旧 SQL Server 组成的遗留 ERP 中得到项目内验证：目录名与源码树不能单独证明发布版本；DPR、PAS、文本/二进制 DFM、数据库目录和运行时装配需要统一身份；数据库驱动菜单、共享父窗体和客户端 DataModule 会让单文件搜索漏掉关键边；动态过程名需要显式 seed；32 位 provider 可用性、数据库聚合可达和真实 UI 行为是三种不同结论。
+gjpERP 启发的观察包括：目录名与源码树不能单独证明发布版本；DPR、PAS、文本/二进制 DFM、运行资产和可选数据资产需要统一身份；动态入口、共享父窗体和间接调用会让单文件搜索漏掉关键边；32 位依赖可用性、数据探针结果和可见运行行为是不同结论。这些是来源项目观察，不是其他 Delphi 产品的既定拓扑。
 
-上述经验只证明方法在该项目边界内有效，不公开源仓库位置、主机或账号身份、连接信息、业务明细行及原始运行证据。任何新的产品主张仍须引用本项目自己的输入哈希、源码定位、运行记录和版本边界。
+当前脱敏指南尚未附带可审计案例索引、限定稳定 ID 和输入哈希，也没有把来源项目证据逐条链接到通用建议。因此这些观察只能作为设计输入，不能证明整页方法已完成项目验证；待建立可审计案例与证据索引后，再按贡献规范评估成熟度。
+
+本页不公开源仓库位置、主机或账号身份、连接信息、业务明细行及原始运行证据。任何产品主张都必须引用目标项目自己的输入身份、证据位置、运行记录和版本边界。
 
 ## 候选推广
 
@@ -29,7 +31,7 @@
 
 ## 项目与运行身份
 
-先回答“正在分析哪一个产品实例”，再解析代码。为每个可执行文件、安装包、DPR 项目、源码变体、数据库备份/实例、配置集和第三方组件建立稳定资产 ID，记录大小、SHA-256、来源、获取方式和保留边界。路径名、时间戳、营销版本或“主目录”称谓只能作为线索。
+先回答“正在分析哪一个产品实例”，再解析代码。为每个可执行文件、安装包、DPR 项目、源码变体、配置集、第三方组件和实际存在的数据目标（数据库、文件或其他介质）建立稳定资产 ID，记录大小、SHA-256、来源、获取方式和保留边界。路径名、时间戳、营销版本或“主目录”称谓只能作为线索。
 
 把静态资产映射到运行身份：记录窗口/About 版本、PE 版本资源、进程位数、实际加载模块及哈希、启动参数、配置选择、连接的数据库身份与只读目录指纹。源码变体只有与已哈希的 EXE/DLL/BPL、安装清单和受控运行行为形成一致证据时，才可称为该运行版本的来源候选；没有编译或符号对齐时保持 `inferred` 或 `conflicting`。
 
@@ -37,13 +39,15 @@
 
 ## DPR、PAS 与 DFM 资产
 
-DPR 决定项目身份和初始装配。区分 `program`、`library` 与 `package`，解析 `uses ... in`、`Application.Initialize`、`Application.CreateForm`、主窗体、DataModule、资源指令和条件编译；同时登记 DPK/BPL package、RC/RES、图标、帮助、报表模板和本地化资源。`CreateForm` 清单是自动创建集合，不是所有可达窗体的全集。
+DPR 决定程序或库的项目身份与初始装配。DPR 的首个声明是 `program` 或 `library`；DPR 不声明 `package`。解析 `uses ... in`、`Application.Initialize`、`Application.CreateForm`、主窗体、可选 DataModule、资源指令和条件编译。`CreateForm` 清单是自动创建集合，不是所有可达窗体的全集。
+
+包项目由 DPK 表达；DPK 解析 `package`、`requires` 和 `contains`，并登记目标 BPL、运行期/设计期标志、依赖包与所含 unit。项目身份还要按版本纳入 Delphi 5 常见的 DOF/CFG、后续版本按实际存在解析 BDSProj/DPROJ，以及项目 RES、RC、图标、帮助、报表模板、本地化资源和 package 元数据。没有出现的版本文件不生成占位记录。
 
 PAS 解析必须同时覆盖 `interface` 和 `implementation`：unit 名与文件身份、uses 依赖、类型/类声明、基类、字段、属性、方法签名、方法体、`inherited` 调用、初始化/终结段、条件编译和动态类注册。把手写源码、IDE 生成片段、类型库导入单元和其他生成代码分别标注；不得用格式或文件名猜测来源。
 
 DFM 同时是窗体/Frame/DataModule 的对象树和资源输入。文本 DFM 提取继承标记、组件类、Name、Action、事件属性、菜单、快捷键、数据绑定和静态属性；二进制 DFM 先哈希原件，再用固定版本工具产生只读派生文本，记录输入/输出哈希与转换日志。转换、反编译、规范化和编码修复都不得覆盖原件，也不得让派生文本冒充原始源码。
 
-资产分母至少按 DPR 项目、PAS unit、Form、DataModule、Frame、DPK/Package、DFM/RES、第三方组件、生成代码和未解析二进制分类计数。零遗漏指资产都已分类，不代表所有语义都已解析。
+资产分母至少按 DPR 项目、DPK 包项目、版本相关项目/构建选项文件、PAS unit、Form、DataModule、Frame、DFM/RES、第三方组件、生成代码和未解析二进制分类计数。零遗漏指资产都已分类，不代表所有语义都已解析。
 
 ## VCL 继承、Action 与事件
 
@@ -51,19 +55,32 @@ DFM 同时是窗体/Frame/DataModule 的对象树和资源输入。文本 DFM �
 
 分别解析控件树和行为绑定：DFM 的 `OnClick`/`OnChange`，TActionList 中 TAction 的 `OnExecute`/`OnUpdate`，控件的 `Action` 属性，静态菜单项、快捷键、工具栏代理和共享 Action。控件关联 Action 后，Caption、Enabled、Visible、Checked、ShortCut 与执行入口可能由 Action 或 `OnUpdate` 动态改变，不能只采集控件自身值。
 
-数据库菜单或配置表可能只提供功能号、类名、命令参数或权限键；运行代码再通过类注册表、工厂、case 分派或字符串创建窗体。应把“配置记录 → 分派代码 → 表单类 → Action/事件”拆成独立边，并保留权限过滤、MDI 所有权、单例复用和动态释放条件。
+入口可能是 DFM/代码声明的静态菜单，也可能由配置、数据库、插件或服务响应动态生成。动态来源可能只提供功能键、类别名、命令参数或权限键；运行代码再通过类注册表、工厂、case 分派或字符串创建窗体。只对实际出现的入口建立“来源—分派—表单—Action/事件”候选关系，并保留权限过滤、MDI 所有权、单例复用和动态释放条件。
 
 设计期 `Visible=True`、`Enabled=True` 或 DFM 菜单顺序只是静态事实。权限、数据状态、Action 更新、父类逻辑、版本配置和动态创建后的结果，只有实际观察对应运行场景才可升级为运行主张。
 
 ## DataModule、数据库与中间件
 
-DataModule 是 Delphi 应用的数据与服务装配节点。登记其创建顺序、生命周期、连接、TDataSource、TClientDataSet、ProviderName、TDataSetProvider、ADO/BDE 组件、事务入口、参数和事件；再把窗体字段/控件绑定到具体 DataSet/Field，而不是只记录组件类。
+DataModule 是可能出现的数据与服务装配节点，不是每个 Delphi 产品的必备层。若发现 DataModule，登记其创建顺序、生命周期、连接、数据源、数据集、事务入口、参数和事件，并把窗体字段/控件绑定到实际 DataSet/Field；若未发现，只记录检索分母和结果，不创建 DataModule 占位边。
 
-沿实际技术分支追踪：本地 ADO/BDE SQL、TClientDataSet 的 CommandText/Delta、DataSetProvider 的数据集与更新策略、MIDAS 数据包、COM/DCOM RemoteDataModule、SocketConnection、类型库接口和服务端实现。`ProviderName`、COM 方法或通用 `OpenProc` 包装器只是中间节点，必须继续定位 SQL/存储过程、参数方向、返回码、事务边界、表/视图/字段和副作用。
+先根据入口和副作用证据选择真实拓扑，再沿所选分支追踪。分支可以组合，例如本地缓存加 API，但组合必须有独立证据。只为实际遇到且有证据的层建边；缺少的层不创建占位边，也不把“未发现”升级成“不存在”。
 
-数据库目录记录对象类型、schema 限定名、字段类型/精度/默认值/约束、过程签名和定义哈希。调用关系与业务语义分开：能够证明 `invoke dbo.P_RecordApply`，不等于已经证明状态码、金额方向、权限或错误反馈的含义；这些含义要由过程定义、上游分支、运行观察或领域确认各自支持。
+### 拓扑分支决策表
 
-连接字符串和账号属于敏感证据。提交材料只保留脱敏的连接角色、provider、数据库稳定 ID、版本与哈希引用；不得提交凭据、服务器地址、租户身份或业务明细。
+| 分支 | 何时建立及追踪边界 |
+| --- | --- |
+| 静态菜单 | DFM、资源或代码直接声明入口时，追踪到 Action/事件和业务例程 |
+| 动态/配置菜单 | 配置、数据库、插件或服务响应生成入口时，保留来源、候选集、分派和权限证据 |
+| 本地数据库/直接 DataModule | 实际发现本地连接或 DataModule 时，追踪数据集、SQL/对象、事务和副作用 |
+| 中间件/RPC/API | 实际发现远程边界时，追踪接口、序列化、端点、服务实现或可观察响应 |
+| 文件 | 实际读写配置、交换文件、模板或输出文件时，追踪格式、路径角色、哈希和原子性 |
+| 无数据层 | 场景只改变内存/UI 或没有找到数据副作用时，记录检索分母与运行观察，不虚构下游 |
+
+TDataSource、TClientDataSet、TDataSetProvider、ADO、BDE、MIDAS、COM/DCOM RemoteDataModule、SocketConnection、RPC、HTTP API 和数据库过程只在遇到时登记。MIDAS、DCOM、Provider 和存储过程都是可选的遇见技术，不得把它们写成每个 Delphi 产品的必经顺序。通用包装器或端点只在其确实存在时作为中间节点；能继续追踪时再定位参数、返回码、事务、表/视图/字段或文件副作用。
+
+如果实际分支包含数据库，目录应记录对象类型、限定名、字段类型/精度/默认值/约束、过程签名和定义哈希。调用关系与业务语义分开：确认某例程 `calls` 一个数据库对象，不等于确认状态码、金额方向、权限或错误反馈含义；这些语义要由对象定义、上游分支、运行观察或领域确认分别支持。
+
+连接字符串和账号属于敏感证据。若产品存在外部连接，提交材料只保留脱敏的连接角色、协议/provider、端点或数据库稳定 ID、版本与哈希引用；不得提交凭据、服务器地址、租户身份或业务明细。
 
 ## 报表、打印与导出
 
@@ -75,16 +92,19 @@ DataModule 是 Delphi 应用的数据与服务装配节点。登记其创建顺�
 
 ### 报表证据上限矩阵
 
-| 证据面 | 最高状态 | 必需身份/来源 | 主张上限 |
+| 主张类型 | 达标状态 | 必需身份/来源 | 独立边界 |
 | --- | --- | --- | --- |
-| 静态模板/代码 | `statically-supported` | 模板/PAS/DFM 的资产 ID、SHA-256、位置和版本 | 不得声称未执行模板的运行行为 |
-| 编译产物/元数据 | `observed` | 二进制/资源哈希、工具版本和提取记录 | 只证明产物事实；源码关系保持未知 |
-| 运行输出捕获 | `observed` | EXE/已加载模块、配置、角色、输入、捕获与输出哈希组成的捕获身份 | 只证明该捕获身份下出现的输出 |
-| 绑定、数据源与运行闭环 | `runtime-confirmed` | 模板/控件绑定、查询/数据源链与同一身份下的运行回放 | 只确认已回放的具体报表行为 |
+| 可见报表/打印/导出行为 | `runtime-confirmed` | 授权记录、EXE/模块哈希、角色、配置、输入、可重复步骤、捕获/输出哈希与副作用 | 只确认已测版本、角色、配置、输入与输出边界 |
+| 静态模板/代码结构 | `statically-supported` | 模板/PAS/DFM 的资产 ID、SHA-256、位置和版本 | 不得声称未执行模板的运行行为 |
+| 编译产物/元数据事实 | `observed` | 二进制/资源哈希、工具版本和提取记录 | 只证明产物事实；源码关系保持未知 |
+| 不完整内部链候选 | `inferred` | 已发现节点、候选集、推理步骤与验证缺口 | 缺失的实现或数据边保持未知 |
+| 无证据内部链 | `unsupported` | 搜索分母、版本、工具和未发现记录 | 不得由可见行为反推内部拓扑 |
 
-只有申请 `runtime-confirmed` 的具体报表主张，才必须同时具备模板/控件绑定、查询/数据源链和同一身份下的运行回放三部分证据。静态模板/代码可以形成 `statically-supported` 主张；身份完备的运行输出捕获可以形成 `observed` 主张，两者都不得外推到未执行行为。
+可重复、已授权并绑定捕获身份的 UI、打印或导出观察，可以在测量边界内支持可见行为的 `runtime-confirmed` 主张，即使只有编译产物。一次不可重复或上下文不完整的捕获最多记录为 `observed`；两者都不解释行为的内部原因。
 
-编译产物/元数据和已捕获运行输出仍可形成较低状态的可用主张；不得为了凑齐链条伪造源码绑定。仅有二进制时，应如实记录资源、导入、字符串、模块或捕获事实及工具边界，把源码调用关系保持为未知。
+可见行为主张与内部实现/数据血缘主张必须使用不同的稳定 ID 和证据链接。缺少模板、源码、中间件或数据库链接，只限制独立的内部实现/数据血缘主张，不得降级已经满足运行协议的可见行为主张。反过来，运行时看见某值也不能证明它来自某模板、查询、服务、表或字段。
+
+静态模板/代码可以形成 `statically-supported` 主张；未执行模板不得声明预览、分页、打印或导出行为。编译产物/元数据和已捕获运行输出仍可形成适用状态的可用主张；可见行为的运行确认不要求伪造或补齐内部链。仅有二进制时如实记录资源、导入、字符串、模块或捕获事实，把缺失的源码绑定和数据血缘保持为 `inferred` 或 `unsupported`。
 
 ## 动态与配置驱动调用
 
@@ -108,9 +128,9 @@ DataModule 是 Delphi 应用的数据与服务装配节点。登记其创建顺�
 
 ## 遗留运行实验室
 
-运行实验属于[运行时实验](../core/runtime-experiments.md)，必须绑定当前目标、动作和环境的 `ART-P0-AUTH`，且 `ART-G0-AUTH` 的 `verdict` 为 `pass`。仅在隔离的 32 位遗留 Windows 会话中运行旧客户端、COM/MIDAS 服务、BDE/ADO/provider 或安装程序；位数、OS build、区域/代码页、组件、数据库和输入哈希必须与任务包一致。
+运行实验属于[运行时实验](../core/runtime-experiments.md)，必须绑定当前目标、动作和环境的 `ART-P0-AUTH`，且 `ART-G0-AUTH` 的 `verdict` 为 `pass`。仅在隔离的 32 位遗留 Windows 会话中运行已选客户端、安装程序及实际遇到的依赖；位数、OS build、区域/代码页、组件、输入与数据目标哈希必须与任务包一致。
 
-数据库实验只连接已验证的一次性数据库副本，源库与副本使用不同且逐次断言的身份。网络默认拒绝，禁用宿主集成和生产路由，使用最小权限与合成数据；先证明快照/备份、反向清理、完整性检查和副本删除，再执行获准动作。旧 provider 在 64 位控制器失败时，可按[WOW64 ADO 桥接模式](../../../patterns/bridge-legacy-sqlserver-through-wow64-ado.md)做受控位数对照，但这不是安装新驱动或扩大授权的许可。
+若所选场景实际使用数据库，实验只连接已验证的一次性数据库副本，源库与副本使用不同且逐次断言的身份；若使用文件，则使用一次性目录/副本并记录前后哈希；若无数据层，不引入数据库作为虚构的验证依赖。网络默认拒绝，禁用宿主集成和生产路由，使用最小权限与合成数据；先证明快照/备份、反向清理、完整性检查和副本删除，再执行获准动作。旧 provider 在 64 位控制器失败时，可按[WOW64 ADO 桥接模式](../../../patterns/bridge-legacy-sqlserver-through-wow64-ado.md)做受控位数对照，但只适用于确实存在该依赖的分支。
 
 每次实验记录可执行文件/模块哈希、数据库身份、用户角色、配置、入口、动作、观察面、预期副作用、实际副作用、清理和终态。失败也保留为证据；身份漂移、连接到非副本、捕获中断、未知写入、隔离削弱或无法恢复时立即停止，不沿用同一运行记录继续试错。
 
@@ -125,7 +145,7 @@ DataModule 是 Delphi 应用的数据与服务装配节点。登记其创建顺�
 | 数据库聚合探针 | 已绑定副本的可达性、对象集合与已执行聚合结果 | `runtime-confirmed`（仅探针主张） | 不证明按钮、筛选、穿透、状态迁移、报表或打印行为 |
 | 已观察 UI 行为 | 精确版本、角色、配置和路径下实际回放的结果 | `runtime-confirmed`（仅已回放场景） | 不外推到未覆盖角色、版本、配置或路径 |
 
-数据库聚合探针通过不得把任何 UI、报表或打印主张升级为 `runtime-confirmed`。具体反例和替代门禁见[数据库聚合探针不是 UI 行为证明](../../../anti-patterns/aggregate-probe-used-as-ui-behavior-proof.md)。
+数据库聚合探针通过不得把任何 UI、报表或打印主张升级为 `runtime-confirmed`。但是，直接、可重复且符合运行协议的可见 UI/打印/导出回放本身可以在已测边界内支持 `runtime-confirmed`，不要求先证明内部链。具体反例和替代门禁见[数据库聚合探针不是 UI 行为证明](../../../anti-patterns/aggregate-probe-used-as-ui-behavior-proof.md)。
 
 ## 常见盲区与停止规则
 
@@ -147,35 +167,33 @@ DataModule 是 Delphi 应用的数据与服务装配节点。登记其创建顺�
 
 ## 纵向追踪示例
 
-以下是从已验证项目结构抽象出的脱敏教学链，展示记录形态而非披露产品实现。示例名称均为脱敏占位符，既不是原始类/对象名，也不包含业务行、地址、账号、主机或文件系统身份。
+下面是中性的教学记录，不代表任何来源项目的实际名称或固定拓扑。先记录可见入口、Action/事件、操作和输出；只有发现对应证据时，才另选本地数据库/直接 DataModule、中间件/RPC/API、文件或无数据层分支。静态菜单和动态/配置菜单也二选一或按证据并存，不能预设数据库菜单。
 
-目标链为：动态菜单配置 → 表单类/动态创建 → Action → OnExecute/OnClick → 业务例程 → TdmClient/TClientDataSet → 中间件接口/Provider → 存储过程 → 表/字段 → UI 状态迁移。
+可见行为和内部链使用不同主张：前者可由已授权、可重复的编译产品回放确认，后者按实际可见的源码、二进制、跟踪或数据证据定状态。示例名称均为中性占位符，不包含来源项目类名、业务行、地址、账号、主机或文件系统身份。
 
-| 顺序 | 脱敏节点 | 证据与关系 | 初始主张状态 |
-| ---: | --- | --- | --- |
-| 1 | `SAN-MENU-01` | 配置目录中的功能键和表单令牌；`configures` | `observed`（仅配置记录） |
-| 2 | `SAN-FORM-01` | 分派例程把令牌解析到共享父类的具体表单并动态创建；`dispatches-to` | `statically-supported` 或有限候选 |
-| 3 | `SAN-ACTION-01` | 子/祖先 DFM 中的 Action 与菜单/工具栏绑定；`binds` | `statically-supported` |
-| 4 | `SAN-EVENT-01` | `OnExecute` 或 `OnClick` 指向处理器；`handles` | `statically-supported` |
-| 5 | `SAN-ROUTINE-01` | 处理器调用校验与提交例程，并可能调用 `inherited`；`calls` | `statically-supported` |
-| 6 | `SAN-DM-01` | 业务例程经 `TdmClient` 和 `TClientDataSet` 组装参数/数据包；`invokes` | `statically-supported` |
-| 7 | `SAN-MW-01` | 客户端调用中间件接口或 Provider；`transports-to` | `statically-supported` |
-| 8 | `SAN-PROC-01` | 完全限定 seed/服务实现候选到一个存储过程；`candidate-invokes` | `inferred`，待唯一解析或跟踪确认 |
-| 9 | `SAN-FIELD-01` | 过程定义读写脱敏业务表的状态字段；`writes` | `statically-supported`（仅该版本定义） |
-| 10 | `SAN-RUNTIME-01` | 旧客户端绑定一次性副本后回放，观察确认提示、字段差异、刷新后的 UI 状态与清理；`transitions` | 未回放前为 `unsupported` |
+### 示例主张与链接
 
-静态链条不得代替最后一跳的运行时状态迁移。只有在哈希绑定的旧客户端、授权角色和一次性数据库副本中实际回放，并同时取得 UI、过程/中间件和数据库前后证据，才能为该场景新建 `runtime-confirmed` 主张；否则保持 `unsupported`。聚合探针即使确认 `SAN-FIELD-01` 所在表可达，也不能确认 `SAN-ACTION-01` 被启用或 `SAN-RUNTIME-01` 已发生。
+| 主张 ID | 精确陈述 | 当前状态 | candidate set / cardinality | 类型化链接 | 证据边界 |
+| --- | --- | --- | --- | --- | --- |
+| `claim:sample.export-visible` | 指定输入的可见导出按相同步骤重复出现 | `runtime-confirmed` | `candidate-set=[]; cardinality=0` | `evidence:sample.run-001` → `validates` → `claim:sample.export-visible` | 只限已哈希版本、角色、配置、输入和输出 |
+| `claim:sample.command-handler` | 已选入口的 Action/事件调用导出处理例程 | `statically-supported` | `candidate-set=[asset:sample.export-handler]; cardinality=1` | `asset:sample.export-command` → `calls` → `asset:sample.export-handler` | 只限已解析 PAS/DFM 或等价静态证据 |
+| `claim:sample.binary-resource-exists` | 编译产物包含一个已哈希的报表资源 | `observed` | `candidate-set=[]; cardinality=0` | `evidence:sample.binary-001` → `supports` → `claim:sample.binary-resource-exists` | 不推断原始模板源码或执行路径 |
+| `claim:sample.internal-route-candidate` | 内部数据路径尚有四个待判别分支 | `inferred` | `candidate-set=[asset:sample.local-query,integration:sample.report-service,data:sample.input-file,claim:sample.no-data-layer]; cardinality=4` | `claim:sample.internal-route-candidate` → `derived-from` → `evidence:sample.static-scan-001` | 不把候选集合写成已发生调用 |
+| `claim:sample.data-lineage` | 导出字段的完整内部来源链已经确定 | `unsupported` | `candidate-set=[data:sample.input-field]; cardinality=1` | `claim:sample.data-lineage` → `derived-from` → `evidence:sample.search-001` | 缺失边保留未知且不影响可见行为主张 |
+| `claim:sample.output-file-written` | 回放在一次性目录产生指定哈希的输出文件 | `runtime-confirmed` | `candidate-set=[data:sample.export-file]; cardinality=1` | `asset:sample.export-handler` → `writes` → `data:sample.export-file` | 只确认测得的文件副作用，不解释上游来源 |
 
-复核时从最后一跳反向检查每条边的版本、证据位置、状态和替代关系。共享父窗体、数据库菜单、动态 seed 与运行观察均保留独立 provenance，后来的强证据通过类型化链接确认或取代旧候选，不覆盖历史。
+所有对象使用 `kind:namespace.qualified-key` 形式的限定稳定 ID。当前状态只能取[主张状态](../core/evidence-and-confidence.md#主张状态)中的封闭值；candidate set 与 cardinality 是独立字段，不得塞入主张状态，且数量必须与集合成员一致。示例只使用核心 `supports`、`calls`、`derived-from`、`validates` 和 `writes`；若需要核心词汇之外的关系，必须先登记扩展关系定义、方向、语义、版本和校验规则，再用于链接。
+
+复核时分别检查可见主张和内部链主张的输入身份、证据位置、状态与类型化链接。后来的强证据通过 `supports`、`validates` 或 `replaces` 等已定义关系补充或取代旧候选，不覆盖历史；候选基数变化也新建记录。
 
 ## 有序工作流
 
-1. 建立可执行文件、安装包、DPR 项目、源码变体、数据库与组件版本的身份矩阵：为每项记录 SHA-256，并用 PE/安装清单与运行时身份交叉验证，不凭目录名选择“正确版本”。
+1. 建立可执行文件、安装包、DPR 项目、源码变体、数据目标/数据库（如存在）与组件版本的身份矩阵：为每项记录 SHA-256，并用 PE/安装清单与运行时身份交叉验证，不凭目录名选择“正确版本”。
 2. 枚举每个 DPR 及其 PAS unit、窗体、DataModule、Frame、DPK/Package、DFM/RES 资源、第三方组件和生成代码，冻结分母与未解析项。
 3. 解析 PAS 的声明和实现以及文本 DFM；二进制 DFM 只生成带工具/输入输出哈希的派生文本，任何转换都不覆盖原件。
 4. 解析 VCL 继承、控件、事件、Action、菜单、快捷键与动态创建，保留祖先/子类、设计期/运行时和静态/动态分派的不同证据边。
-5. 从 DataModule、TClientDataSet 与 Provider 继续追踪 ADO、BDE、MIDAS、DCOM、Socket、中间件接口、存储过程、表/字段、事务和返回状态。
+5. 按实际依赖选择本地数据库/直接 DataModule、中间件/RPC/API、文件或无数据层分支；只为实际遇到且有证据的节点追踪，可选组件按需登记，不补齐不存在的层。
 6. 对不能静态唯一解析的动态数据库调用使用完全限定、带证据和验证方法的 seed；候选不足或冲突时保持未知，不得伪造精确调用边。
-7. 只有 `ART-G0-AUTH` 为 `pass` 才在隔离的 32 位遗留 Windows 中，以一次性数据库副本执行获准实验；分别记录 DFM 静态属性、通用组件能力、数据库聚合探针和已观察 UI 行为四类证据面。
+7. 只有 `ART-G0-AUTH` 为 `pass` 才在隔离的 32 位遗留 Windows 中执行获准实验；若为数据库分支才使用一次性数据库副本，文件分支使用一次性目录，无数据层不引入数据库；分别记录 DFM 静态属性、通用组件能力、数据库聚合探针（如适用）和已观察 UI 行为四类证据面。
 
 完成后按[覆盖、质量与冻结](../core/coverage-quality-and-freeze.md)审查资产分母、未解析动态边、版本冲突、运行缺口和停止记录。通过结构校验只表示本文契约存在，不会把任何目标产品主张自动升级。

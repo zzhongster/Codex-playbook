@@ -59,12 +59,37 @@ ALLOWED_MATURITY_LABELS = (
     "industry-established",
     "proposed",
 )
+CLAIM_STATUSES = {
+    "observed",
+    "statically-supported",
+    "runtime-confirmed",
+    "domain-confirmed",
+    "inferred",
+    "conflicting",
+    "unsupported",
+    "deprecated",
+    "superseded",
+}
+CORE_RELATION_KINDS = {
+    "supports",
+    "contradicts",
+    "exposes",
+    "implements",
+    "reads",
+    "writes",
+    "calls",
+    "emits",
+    "derived-from",
+    "validates",
+    "replaces",
+}
 TASK_4_DOCUMENT_NAMES = (
     "runtime-experiments",
     "coverage-quality-and-freeze",
     "human-agent-collaboration",
 )
 REQUIRED_DELPHI_SECTIONS = (
+    "来源项目观察与证据缺口",
     "访问轨道选择",
     "项目与运行身份",
     "DPR、PAS 与 DFM 资产",
@@ -297,21 +322,25 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         report = self.section_text(document, "## 报表、打印与导出")
         matrix = self.section_text(report, "### 报表证据上限矩阵")
         expected_rows = {
-            "静态模板/代码": (
+            "可见报表/打印/导出行为": (
+                "runtime-confirmed",
+                "只确认已测版本、角色、配置、输入与输出边界",
+            ),
+            "静态模板/代码结构": (
                 "statically-supported",
                 "不得声称未执行模板的运行行为",
             ),
-            "编译产物/元数据": (
+            "编译产物/元数据事实": (
                 "observed",
                 "只证明产物事实；源码关系保持未知",
             ),
-            "运行输出捕获": (
-                "observed",
-                "只证明该捕获身份下出现的输出",
+            "不完整内部链候选": (
+                "inferred",
+                "缺失的实现或数据边保持未知",
             ),
-            "绑定、数据源与运行闭环": (
-                "runtime-confirmed",
-                "只确认已回放的具体报表行为",
+            "无证据内部链": (
+                "unsupported",
+                "不得由可见行为反推内部拓扑",
             ),
         }
         observed_rows = {}
@@ -327,14 +356,121 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 )
         self.assertEqual(expected_rows, observed_rows)
         self.assertIn(
-            "只有申请 `runtime-confirmed` 的具体报表主张，才必须同时具备"
-            "模板/控件绑定、查询/数据源链和同一身份下的运行回放三部分证据。",
+            "可重复、已授权并绑定捕获身份的 UI、打印或导出观察，可以在测量边界内"
+            "支持可见行为的 `runtime-confirmed` 主张，即使只有编译产物。",
             report,
         )
         self.assertIn(
-            "编译产物/元数据和已捕获运行输出仍可形成较低状态的可用主张；"
-            "不得为了凑齐链条伪造源码绑定。",
+            "缺少模板、源码、中间件或数据库链接，只限制独立的内部实现/数据血缘"
+            "主张，不得降级已经满足运行协议的可见行为主张。",
             report,
+        )
+        self.assertIn(
+            "可见行为的运行确认不要求伪造或补齐内部链",
+            report,
+        )
+        self.assertNotIn(
+            "只有申请 `runtime-confirmed` 的具体报表主张，才必须同时具备",
+            report,
+        )
+
+    def assert_delphi_topology_is_selected_not_forced(self, document):
+        data_section = self.section_text(document, "## DataModule、数据库与中间件")
+        topology = self.section_text(data_section, "### 拓扑分支决策表")
+        expected_branches = {
+            "静态菜单",
+            "动态/配置菜单",
+            "本地数据库/直接 DataModule",
+            "中间件/RPC/API",
+            "文件",
+            "无数据层",
+        }
+        observed_branches = {
+            match.group(1)
+            for line in topology.splitlines()
+            if (match := re.fullmatch(r"\| ([^|]+) \| .+ \|", line))
+            and match.group(1) in expected_branches
+        }
+        self.assertEqual(expected_branches, observed_branches)
+        self.assertIn(
+            "只为实际遇到且有证据的层建边；缺少的层不创建占位边",
+            data_section,
+        )
+        self.assertIn(
+            "MIDAS、DCOM、Provider 和存储过程都是可选的遇见技术",
+            data_section,
+        )
+        self.assertIn("不得把它们写成每个 Delphi 产品的必经顺序", data_section)
+        workflow = self.section_text(document, "## 有序工作流")
+        self.assertIn("数据目标/数据库（如存在）", workflow)
+        self.assertIn("若为数据库分支才使用一次性数据库副本", workflow)
+        self.assertIn("文件分支使用一次性目录", workflow)
+        self.assertIn("无数据层不引入数据库", workflow)
+
+    def assert_delphi_project_file_roles(self, document):
+        assets = self.section_text(document, "## DPR、PAS 与 DFM 资产")
+        for contract in (
+            "DPR 的首个声明是 `program` 或 `library`",
+            "DPR 不声明 `package`",
+            "DPK 解析 `package`、`requires` 和 `contains`",
+            "Delphi 5 常见的 DOF/CFG",
+            "后续版本按实际存在解析 BDSProj/DPROJ",
+            "项目 RES",
+            "package 元数据",
+        ):
+            self.assertIn(contract, assets)
+
+    def assert_delphi_vertical_example_contract(self, document):
+        trace = self.section_text(document, "## 纵向追踪示例")
+        records = self.section_text(trace, "### 示例主张与链接")
+        row_pattern = re.compile(
+            r"\| `([^`]+)` \| [^|]+ \| `([^`]+)` \| `([^`]+)` \| "
+            r"([^|]+) \| [^|]+ \|"
+        )
+        rows = [
+            match.groups()
+            for line in records.splitlines()
+            if (match := row_pattern.fullmatch(line))
+        ]
+        self.assertGreaterEqual(len(rows), 5)
+
+        stable_id_pattern = re.compile(
+            r"^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+$"
+        )
+        for stable_id, status, candidates, links in rows:
+            self.assertRegex(stable_id, stable_id_pattern)
+            self.assertIn(status, CLAIM_STATUSES)
+            candidate_match = re.fullmatch(
+                r"candidate-set=\[([^\]]*)\]; cardinality=(\d+)",
+                candidates,
+            )
+            self.assertIsNotNone(candidate_match)
+            candidate_ids = [
+                candidate.strip()
+                for candidate in candidate_match.group(1).split(",")
+                if candidate.strip()
+            ]
+            self.assertEqual(len(candidate_ids), int(candidate_match.group(2)))
+            for candidate_id in candidate_ids:
+                self.assertRegex(candidate_id, stable_id_pattern)
+            relations = re.findall(r"→ `([a-z-]+)` →", links)
+            self.assertTrue(relations, f"missing typed relation in row: {stable_id}")
+            self.assertTrue(set(relations).issubset(CORE_RELATION_KINDS))
+
+        referenced_ids = re.findall(
+            r"\b[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+\b",
+            records,
+        )
+        self.assertTrue(referenced_ids)
+        for stable_id in referenced_ids:
+            self.assertRegex(stable_id, stable_id_pattern)
+        self.assertIn(
+            "candidate set 与 cardinality 是独立字段，不得塞入主张状态",
+            trace,
+        )
+        self.assertIn(
+            "若需要核心词汇之外的关系，必须先登记扩展关系定义",
+            trace,
         )
 
     def assert_deterministic_gate_record_schema(self, document):
@@ -404,12 +540,19 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             for line in document.splitlines()
             if line.strip().removeprefix("**").startswith("证据成熟度：")
         ]
-        self.assertEqual(
-            ["**证据成熟度：`project-validated`**"], maturity_declarations
-        )
+        self.assertEqual(["**证据成熟度：`proposed`**"], maturity_declarations)
         self.assert_one_nonblank_applicability_declaration(document)
-        self.assertEqual(1, document.count("**段落依据：`project-validated`**"))
-        self.assertEqual(1, document.count("**推广状态：`proposed`**"))
+        self.assertNotIn("**段落依据：`project-validated`**", document)
+        self.assertIn(
+            "**证据标记：`source-project-observation`；通用指南链接：`pending`**",
+            document,
+        )
+        source_project = self.section_text(
+            document, "## 来源项目观察与证据缺口"
+        )
+        self.assertIn("gjpERP 启发的观察", source_project)
+        self.assertIn("可审计案例索引、限定稳定 ID 和输入哈希", source_project)
+        self.assertIn("不能证明整页方法已完成项目验证", source_project)
         self.assertNotIn("/Users/", document)
         self.assertNotRegex(document, r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
 
@@ -449,7 +592,8 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertEqual(7, len(steps))
         expected_terms = (
             (
-                "可执行文件、安装包、DPR 项目、源码变体、数据库与组件版本",
+                "可执行文件、安装包、DPR 项目、源码变体、数据目标/数据库（如存在）"
+                "与组件版本",
                 "SHA-256",
                 "运行时身份",
             ),
@@ -474,18 +618,24 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "动态创建",
             ),
             (
-                "DataModule",
-                "TClientDataSet",
-                "Provider",
-                "ADO",
-                "BDE",
-                "MIDAS",
-                "DCOM",
-                "Socket",
-                "存储过程",
+                "按实际依赖选择",
+                "本地数据库/直接 DataModule",
+                "中间件/RPC/API",
+                "文件",
+                "无数据层",
+                "只为实际遇到",
+                "不补齐不存在的层",
             ),
             ("动态数据库调用", "完全限定", "证据", "不得伪造精确调用边"),
-            ("32 位", "ART-G0-AUTH", "pass", "一次性数据库副本", "四类证据面"),
+            (
+                "32 位",
+                "ART-G0-AUTH",
+                "pass",
+                "若为数据库分支才使用一次性数据库副本",
+                "文件分支使用一次性目录",
+                "无数据层不引入数据库",
+                "四类证据面",
+            ),
         )
         for step, terms in zip(steps, expected_terms):
             for term in terms:
@@ -525,6 +675,28 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             with self.subTest(contract=contract):
                 self.assertIn(contract, dynamic_calls)
 
+    def test_delphi_guide_selects_only_encountered_topology_branches(self):
+        document = self.read_stack_document("delphi-desktop")
+        self.assert_delphi_topology_is_selected_not_forced(document)
+
+        mutated = document.replace(
+            "只为实际遇到且有证据的层建边；缺少的层不创建占位边",
+            "所有产品都必须串联 DataModule、中间件、Provider 和数据库",
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_delphi_topology_is_selected_not_forced(mutated)
+
+    def test_delphi_project_files_have_version_specific_roles(self):
+        document = self.read_stack_document("delphi-desktop")
+        self.assert_delphi_project_file_roles(document)
+
+        mutated = document.replace(
+            "DPR 不声明 `package`",
+            "DPR 声明 `package`",
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_delphi_project_file_roles(mutated)
+
     def test_delphi_compiled_only_evidence_has_explicit_claim_ceiling(self):
         document = self.read_stack_document("delphi-desktop")
         compiled = self.section_text(document, "## 仅编译产物与兼容性边界")
@@ -548,13 +720,17 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assert_delphi_report_evidence_ceilings(document)
 
         mutations = {
-            "requires runtime evidence for a static claim": document.replace(
-                "只有申请 `runtime-confirmed` 的具体报表主张，才必须同时具备",
-                "只有申请 `statically-supported` 的具体报表主张，才必须同时具备",
+            "downgrades visible runtime behavior": document.replace(
+                "| 可见报表/打印/导出行为 | `runtime-confirmed` |",
+                "| 可见报表/打印/导出行为 | `observed` |",
             ),
-            "fabricates source binding for compiled-only evidence": document.replace(
-                "不得为了凑齐链条伪造源码绑定。",
-                "必须为了凑齐链条伪造源码绑定。",
+            "requires internal chain for visible behavior": document.replace(
+                "可见行为的运行确认不要求伪造或补齐内部链",
+                "可见行为的运行确认必须补齐内部链",
+            ),
+            "downgrades behavior for missing internals": document.replace(
+                "不得降级已经满足运行协议的可见行为主张。",
+                "必须降级已经满足运行协议的可见行为主张。",
             ),
         }
         for name, mutation in mutations.items():
@@ -584,33 +760,41 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         ):
             self.assertIn(stop_rule, blind_spots)
 
-    def test_delphi_vertical_trace_keeps_static_runtime_and_generalization_separate(self):
+    def test_delphi_vertical_example_uses_core_identity_and_status_contracts(self):
         document = self.read_stack_document("delphi-desktop")
-        trace = self.section_text(document, "## 纵向追踪示例")
-        chain = (
-            "动态菜单配置 → 表单类/动态创建 → Action → OnExecute/OnClick → "
-            "业务例程 → TdmClient/TClientDataSet → 中间件接口/Provider → "
-            "存储过程 → 表/字段 → UI 状态迁移"
-        )
-        self.assertIn(chain, trace)
-        for marker in (
+        self.assert_delphi_vertical_example_contract(document)
+        for forbidden in (
+            "".join(("Tdm", "Client")),
             "SAN-MENU-01",
-            "SAN-FORM-01",
-            "SAN-ACTION-01",
-            "SAN-EVENT-01",
-            "SAN-ROUTINE-01",
-            "SAN-DM-01",
-            "SAN-MW-01",
-            "SAN-PROC-01",
-            "SAN-FIELD-01",
-            "SAN-RUNTIME-01",
+            "`configures`",
+            "`dispatches-to`",
+            "`candidate-invokes`",
         ):
-            with self.subTest(marker=marker):
-                self.assertIn(marker, trace)
-        self.assertIn("示例名称均为脱敏占位符", trace)
-        self.assertIn("静态链条不得代替最后一跳的运行时状态迁移", trace)
-        self.assertIn("一次性数据库副本中实际回放", trace)
-        self.assertIn("否则保持 `unsupported`", trace)
+            self.assertNotIn(forbidden, document)
+
+        mutations = {
+            "unqualified stable ID": document.replace(
+                "claim:sample.export-visible",
+                "SAN-MENU-01",
+                1,
+            ),
+            "non-core claim status": document.replace(
+                "| `claim:sample.export-visible` | 指定输入的可见导出按相同步骤重复出现 "
+                "| `runtime-confirmed` |",
+                "| `claim:sample.export-visible` | 指定输入的可见导出按相同步骤重复出现 "
+                "| `candidate` |",
+                1,
+            ),
+            "unregistered relation kind": document.replace(
+                "→ `validates` →",
+                "→ `transitions-to` →",
+                1,
+            ),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                with self.assertRaises(AssertionError):
+                    self.assert_delphi_vertical_example_contract(mutation)
 
     def test_access_tracks_have_the_exact_substantive_section_contract(self):
         maturity_pattern = re.compile(r"^\*\*证据成熟度：`([^`]+)`\*\*$")
