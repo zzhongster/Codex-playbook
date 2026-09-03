@@ -209,7 +209,7 @@ residual_checks:
 
 PROTOCOL 在首次执行前完成并置为 `frozen`。协议一旦冻结，运行结果、首次失败、副作用、清理或残留检查都不得回写协议；协议变化必须创建新 `artifact_id` 与 hash。RESULT 与 EFFECTS 只能引用精确的 `protocol_id` 和 `protocol_content_hash`，不得复制可被事后改写的协议字段。
 
-RESULT 和 EFFECTS 的 `product_version` 与 `scope_or_module` 必须逐字等于 PROTOCOL；上下文变化必须创建并冻结新协议，不能在派生产物中另写版本或范围。run、independent reproduction、first failure、effect、cleanup 和 residual check 的内层证据引用必须解析到所属产物顶层的 `evidence_references`；每个产物的顶层 evidence 也必须由该产物自己的 evidence-method mapping 完整解释。`first_failure.run_id` 必须解析到本 RESULT 已声明的某个运行或独立复现 run ID，未发生首次失败时保持 `null`。
+RESULT 和 EFFECTS 的 `product_version` 与 `scope_or_module` 必须逐字等于 PROTOCOL；上下文变化必须创建并冻结新协议，不能在派生产物中另写版本或范围。run、independent reproduction、first failure、effect、cleanup 和 residual check 的内层证据引用必须解析到所属产物顶层的 `evidence_references`；每个产物的顶层 evidence 也必须由该产物自己的 evidence-method mapping 完整解释。`first_failure.run_id` 必须解析到本 RESULT 中最早的 failed/mixed run，未发生首次失败时保持 `null`。
 
 业务 run 为 `passed` 而 cleanup 为 `failed` 是必须如实保存的有效审计事实，不能由实验记录 schema 拒绝或改写；该组合也不会自动产生 G5 `pass`。G5 仍由覆盖与门禁规则依据独立的不可变输入判定，清理失败须作为未满足条件或缺口进入其评审。
 
@@ -242,7 +242,8 @@ RESULT 和 EFFECTS 的 `product_version` 与 `scope_or_module` 必须逐字等�
 
 ## 首个失败保全
 
-- 在任何自动重试前保存 first failure 的多观察面、关联 ID、时间顺序和当时状态。任一 run 为 `failed` 或 `mixed` 时必须保留非空实际观察和证据，并将 `first_failure.present` 置为 true，且其 run ID 必须指向本 RESULT 中的 failed/mixed run。
+- 在任何自动重试前保存 first failure 的多观察面、关联 ID、时间顺序和当时状态。任一 run 为 `failed` 或 `mixed` 时必须保留非空实际观察和证据，并将 `first_failure.present` 置为 true；最早失败按 `started_at` 排序并用记录序列打破同刻并列，`run_id` 必须指向该 failed/mixed run。
+- `first_failure.captured_at` 必须落在该 run 的闭区间 `[started_at, ended_at]` 内，并严格早于任何后续 retry 的 `started_at`；`preserved_before_retry` 必须为 true。无法解析或缺少时区的 timestamp 是验证错误，不能让校验器崩溃或猜测顺序。
 - 后续尝试使用新运行序号并链接首错；最终成功不得抹去失败、部分提交或补偿证据。
 
 ## 逆序清理与残留检查

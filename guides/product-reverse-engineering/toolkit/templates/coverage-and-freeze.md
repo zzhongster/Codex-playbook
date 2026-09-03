@@ -224,7 +224,8 @@ G5 的合法组合是封闭集合：运行分支开始或失败时为 `runtime +
 
 ## 产物生命周期
 
-- 产物与摘要只使用 `active`、`replaced`、`withdrawn`，独立于产品主张状态和 `superseded`。
+- 顶层 `status` 与 `definitions.schema.json` 的共享 record lifecycle 完全一致，只允许 `draft`、`in-review`、`active`、`approved`、`frozen`、`replaced`、`withdrawn`；`draft` 是合法初始状态，不与 schema 冲突。
+- `draft`/`in-review` 表示尚未批准，`active`/`approved` 表示当前可用或已批准，`frozen` 表示输入和内容身份已冻结，`replaced`/`withdrawn` 表示历史处置。该生命周期独立于产品主张状态和 `superseded`。
 - 替换关系成对保存 `replaces` / `replaced-by`、哈希、理由、批准和生效范围；旧对象保持可寻址。
 
 ## 无环冻结与复核

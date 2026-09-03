@@ -410,6 +410,20 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         def experiment_artifacts_are_bound(validator, enabled, instance, schema):
             if not enabled or not isinstance(instance, dict):
                 return
+
+            def parse_timestamp(value):
+                if not isinstance(value, str):
+                    return None
+                try:
+                    parsed = datetime.fromisoformat(
+                        value.replace("Z", "+00:00")
+                    )
+                except (ValueError, OverflowError):
+                    return None
+                if parsed.tzinfo is None or parsed.utcoffset() is None:
+                    return None
+                return parsed
+
             protocol = instance.get("protocol")
             if not isinstance(protocol, dict):
                 return
@@ -616,36 +630,45 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                             "declared runs must satisfy reproduction criteria"
                         )
                 failed_run_ids = []
-                for run in runs:
+                failed_run_count = 0
+                parsed_failed_runs = []
+                parsed_runs = []
+                for sequence, run in enumerate(runs):
                     started_at = run.get("started_at")
                     ended_at = run.get("ended_at")
-                    if isinstance(started_at, str) and isinstance(ended_at, str):
-                        try:
-                            start = datetime.fromisoformat(
-                                started_at.replace("Z", "+00:00")
+                    start = parse_timestamp(started_at)
+                    end = parse_timestamp(ended_at)
+                    if isinstance(started_at, str) and start is None:
+                        yield ValidationError(
+                            "run started_at must be a timezone-aware timestamp"
+                        )
+                    if isinstance(ended_at, str) and end is None:
+                        yield ValidationError(
+                            "run ended_at must be a timezone-aware timestamp"
+                        )
+                    if start is not None and end is not None:
+                        if end < start:
+                            yield ValidationError(
+                                "run ended_at must not precede started_at"
                             )
-                            end = datetime.fromisoformat(
-                                ended_at.replace("Z", "+00:00")
+                        run_id = run.get("run_id")
+                        if isinstance(run_id, str):
+                            parsed_runs.append(
+                                (sequence, run_id, start, end)
                             )
-                        except ValueError:
-                            pass
-                        else:
-                            if (
-                                start.tzinfo is not None
-                                and end.tzinfo is not None
-                                and end < start
-                            ):
-                                yield ValidationError(
-                                    "run ended_at must not precede started_at"
-                                )
                     run_result = run.get("result")
                     if isinstance(run_result, str) and run_result in {
                         "failed",
                         "mixed",
                     }:
+                        failed_run_count += 1
                         run_id = run.get("run_id")
                         if isinstance(run_id, str):
                             failed_run_ids.append(run_id)
+                            if start is not None and end is not None:
+                                parsed_failed_runs.append(
+                                    (sequence, run_id, start, end)
+                                )
                         observations = run.get("actual_observations")
                         evidence = run.get("evidence_references")
                         if not isinstance(observations, list) or not observations:
@@ -667,6 +690,57 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                             yield ValidationError(
                                 "first_failure.run_id must resolve to a failed or mixed run"
                             )
+                        if first_failure.get("preserved_before_retry") is not True:
+                            yield ValidationError(
+                                "first failure must be preserved before retry"
+                            )
+                        if (
+                            failed_run_count > 0
+                            and len(parsed_failed_runs) == failed_run_count
+                        ):
+                            earliest_failure = min(
+                                parsed_failed_runs,
+                                key=lambda item: (item[2], item[0]),
+                            )
+                            (
+                                earliest_sequence,
+                                earliest_run_id,
+                                earliest_start,
+                                earliest_end,
+                            ) = earliest_failure
+                            if failure_run_id != earliest_run_id:
+                                yield ValidationError(
+                                    "first_failure.run_id must identify the earliest failed or mixed run"
+                                )
+                            captured_value = first_failure.get("captured_at")
+                            captured_at = parse_timestamp(captured_value)
+                            if isinstance(captured_value, str) and captured_at is None:
+                                yield ValidationError(
+                                    "first_failure.captured_at must be a timezone-aware timestamp"
+                                )
+                            if captured_at is not None:
+                                if not earliest_start <= captured_at <= earliest_end:
+                                    yield ValidationError(
+                                        "first_failure.captured_at must fall within the earliest failed run"
+                                    )
+                                subsequent_starts = [
+                                    run_start
+                                    for (
+                                        sequence,
+                                        _run_id,
+                                        run_start,
+                                        _run_end,
+                                    ) in parsed_runs
+                                    if sequence > earliest_sequence
+                                    and run_start > earliest_start
+                                ]
+                                if any(
+                                    captured_at >= retry_start
+                                    for retry_start in subsequent_starts
+                                ):
+                                    yield ValidationError(
+                                        "first failure must be captured before any subsequent retry starts"
+                                    )
                     elif failed_run_ids:
                         yield ValidationError(
                             "failed or mixed runs require first_failure.present true"
@@ -3631,6 +3705,85 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         )
         self.assertTrue(list(validator.iter_errors(failed_without_observation)))
 
+    def test_experiment_first_failure_is_the_earliest_failure_and_precedes_retries(self):
+        self.require_all_schemas_and_examples()
+        experiment = self.read_json_file(
+            SCHEMA_EXAMPLES["experiment"]["valid"]
+        )
+        validator = self.schema_validator("experiment")
+        result = experiment["result"]
+        primary = result["run_results"][0]
+        retry = result["independent_reproduction_results"][0]
+        primary["result"] = "failed"
+        retry["result"] = "mixed"
+        result["first_failure"].update(
+            {
+                "present": True,
+                "run_id": primary["run_id"],
+                "captured_at": "2026-01-15T09:01:30Z",
+                "observation_surfaces": ["synthetic response"],
+                "correlation_ids": ["correlation:sample.first-failure"],
+                "evidence_references": ["evidence:sample.order-response"],
+                "preserved_before_retry": True,
+            }
+        )
+        self.assertEqual([], list(validator.iter_errors(experiment)))
+
+        points_to_later_failure = copy.deepcopy(experiment)
+        points_to_later_failure["result"]["first_failure"].update(
+            {
+                "run_id": retry["run_id"],
+                "captured_at": "2026-01-15T09:05:30Z",
+            }
+        )
+        self.assertTrue(list(validator.iter_errors(points_to_later_failure)))
+
+        captured_after_retry_started = copy.deepcopy(experiment)
+        captured_after_retry_started["result"]["run_results"][0][
+            "ended_at"
+        ] = "2026-01-15T09:06:00Z"
+        captured_after_retry_started["result"]["first_failure"][
+            "captured_at"
+        ] = "2026-01-15T09:05:30Z"
+        self.assertTrue(list(validator.iter_errors(captured_after_retry_started)))
+
+        not_preserved_before_retry = copy.deepcopy(experiment)
+        not_preserved_before_retry["result"]["first_failure"][
+            "preserved_before_retry"
+        ] = False
+        self.assertTrue(list(validator.iter_errors(not_preserved_before_retry)))
+
+        for boundary in (primary["started_at"], primary["ended_at"]):
+            with self.subTest(captured_at=boundary):
+                boundary_capture = copy.deepcopy(experiment)
+                boundary_capture["result"]["first_failure"][
+                    "captured_at"
+                ] = boundary
+                self.assertEqual([], list(validator.iter_errors(boundary_capture)))
+
+        tied_failure_start = copy.deepcopy(experiment)
+        tied_failure_start["result"]["independent_reproduction_results"][0][
+            "started_at"
+        ] = primary["started_at"]
+        tied_failure_start["result"]["first_failure"]["captured_at"] = primary[
+            "started_at"
+        ]
+        self.assertEqual([], list(validator.iter_errors(tied_failure_start)))
+
+        tied_but_points_to_second = copy.deepcopy(tied_failure_start)
+        tied_but_points_to_second["result"]["first_failure"]["run_id"] = retry[
+            "run_id"
+        ]
+        self.assertTrue(list(validator.iter_errors(tied_but_points_to_second)))
+
+        malformed_timestamp = copy.deepcopy(experiment)
+        malformed_timestamp["result"]["first_failure"]["captured_at"] = (
+            "not-a-timestamp"
+        )
+        self.assert_validation_errors_without_exception(
+            validator, malformed_timestamp
+        )
+
     def test_custom_schema_keywords_never_crash_on_malformed_json_types(self):
         self.require_all_schemas_and_examples()
         experiment = self.read_json_file(
@@ -3836,6 +3989,10 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "url": "https://api.example.invalid/synthetic",
             "ipv4": "192.0.2.25",
             "ipv6": "2001:db8::25",
+            "embedded_reserved_networks": (
+                "Reserved endpoints example.invalid, 192.0.2.25, and "
+                "2001:db8::25 are synthetic."
+            ),
             "note": "A normal synthetic observation without credentials.",
         }
         self.assertEqual([], fixture_safety_errors(safe_values))
@@ -3849,10 +4006,37 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "absolute user path": {"path": "/Users/alice/customer.json"},
             "customer record": {"note": "customer_name=RealCo Holdings"},
             "secret-shaped key": {"api_key": "synthetic-placeholder"},
+            "URL userinfo": {
+                "url": "https://fixture-user:long-password@example.invalid/private"
+            },
+            "embedded user path": {
+                "note": "artifact=/Users/alice/private/capture.json"
+            },
+            "embedded root home path": {
+                "note": "artifact=/root/private/capture.json"
+            },
+            "embedded public domain": {
+                "note": "The callback reached api.customer.example.com during capture."
+            },
+            "embedded non-reserved IPv4": {
+                "note": "The peer address was 203.0.114.8 during capture."
+            },
+            "embedded non-reserved IPv6": {
+                "note": "The peer address was 2001:4860:4860::8888 during capture."
+            },
         }
         for label, value in unsafe_values.items():
             with self.subTest(label=label):
                 self.assertTrue(fixture_safety_errors(value))
+
+        for assignment in (
+            "token=abcdefghijklmnop",
+            "password=abcdefghijklmnop",
+            "secret=abcdefghijklmnop",
+            "api-key=abcdefghijklmnop",
+        ):
+            with self.subTest(assignment=assignment):
+                self.assertTrue(fixture_safety_errors({"note": assignment}))
 
         contributing = self.read_repo_file("CONTRIBUTING.md")
         for documented_reservation in (
@@ -4113,6 +4297,8 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "`first_failure.run_id` 必须解析到本 RESULT",
             "`ended_at` 不得早于 `started_at`",
             "failed/mixed run",
+            "按 `started_at` 排序并用记录序列打破同刻并列",
+            "早于任何后续 retry 的 `started_at`",
             "occurred: false + disposition: not-created",
         ):
             self.assertIn(boundary_statement, experiment)
@@ -4215,6 +4401,19 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "gap_count = runtime.unknown_count + runtime.conflicting_count",
             document,
         )
+
+    def test_coverage_template_status_text_matches_shared_lifecycle_enum(self):
+        schema = self.read_json_file(SCHEMA_DOCUMENTS["definitions"])
+        lifecycle = schema["$defs"]["recordLifecycle"]["enum"]
+        document = self.read_template_document("coverage-and-freeze")
+        metadata = self.parse_yaml_metadata(document)
+        self.assertIn(metadata["status"], lifecycle)
+        lifecycle_section = self.section_text(document, "## 产物生命周期")
+        for status in lifecycle:
+            with self.subTest(status=status):
+                self.assertIn(f"`{status}`", lifecycle_section)
+        self.assertIn("`draft` 是合法初始状态", lifecycle_section)
+        self.assertNotIn("只使用 `active`、`replaced`、`withdrawn`", lifecycle_section)
 
     def test_coverage_template_rejects_g5_not_applicable(self):
         metadata = self.parse_yaml_metadata(

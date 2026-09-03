@@ -10,8 +10,9 @@ _SECRET_KEY = re.compile(
     r"(?i)^(?:password|passwd|secret|access[_-]?token|api[_-]?key)$"
 )
 _CREDENTIAL_VALUE = re.compile(
-    r"(?i)(?:\b(?:password|passwd|secret|access[ _-]?token|api[ _-]?key)\b"
-    r"\s*[:=]\s*\S+|\bbearer\s+[A-Za-z0-9._~+/-]{8,})"
+    r"(?i)(?:\b(?:password|passwd|secret|(?:access[ _-]?)?token|api[ _-]?key)\b"
+    r"\s*[:=]\s*[\"']?[A-Za-z0-9._~+/-]{6,}|"
+    r"\bbearer\s+[A-Za-z0-9._~+/-]{8,})"
 )
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
 _AWS_ACCESS_KEY = re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")
@@ -19,7 +20,10 @@ _TOKEN_PREFIX = re.compile(
     r"\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})\b"
 )
 _USER_PATH = re.compile(
-    r"(?:^|\s)(?:/Users/[^\s]+|/home/[^\s]+|[A-Za-z]:[\\/]Users[\\/][^\s]+)"
+    r"(?:/Users/[^/\s]+(?:/[^\s]*)?|/home/[^/\s]+(?:/[^\s]*)?|"
+    r"/root/[^\s]*|"
+    r"[A-Za-z]:[\\/](?:Users|Documents and Settings)[\\/]"
+    r"[^\\/\s]+(?:[\\/][^\s]*)?)"
 )
 _LABELED_BUSINESS_RECORD = re.compile(
     r"(?i)\b(?:customer|business|company|contact)[_-]?(?:name|id)?\s*[:=]\s*"
@@ -28,6 +32,21 @@ _LABELED_BUSINESS_RECORD = re.compile(
 _URL = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s\"'<>]+", re.IGNORECASE)
 _DOMAIN = re.compile(r"(?i)\b(?:[a-z0-9-]+\.)+[a-z]{2,63}\b")
 _IPV4 = re.compile(r"(?<![0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9])")
+_IPV6 = re.compile(
+    r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}"
+    r"[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])"
+)
+_FILE_EXTENSIONS = {
+    "csv",
+    "html",
+    "json",
+    "log",
+    "md",
+    "txt",
+    "xml",
+    "yaml",
+    "yml",
+}
 
 _RESERVED_SUFFIXES = (".invalid", ".example", ".test", ".localhost")
 _RESERVED_IPV4 = tuple(
@@ -70,7 +89,14 @@ def _string_safety_errors(value, path):
 
     url_hosts = set()
     for match in _URL.finditer(value):
-        host = urlsplit(match.group(0)).hostname
+        try:
+            parsed_url = urlsplit(match.group(0))
+            host = parsed_url.hostname
+        except ValueError:
+            errors.append(f"{path}: malformed URL authority")
+            continue
+        if parsed_url.username is not None or parsed_url.password is not None:
+            errors.append(f"{path}: URL userinfo credential")
         if isinstance(host, str):
             url_hosts.add(host.lower())
             if not _reserved_host(host):
@@ -80,6 +106,11 @@ def _string_safety_errors(value, path):
     normalized_non_url_text = non_url_text.strip(" \t\r\n[](){}<>,;\"'")
     for domain_match in _DOMAIN.finditer(non_url_text):
         domain = domain_match.group(0).lower()
+        left_context = non_url_text[: domain_match.start()]
+        is_qualified_id = bool(
+            re.search(r"(?:^|[^a-z0-9-])[a-z][a-z0-9-]*:$", left_context, re.I)
+        )
+        is_filename = domain.rsplit(".", 1)[-1] in _FILE_EXTENSIONS
         explicitly_labeled = bool(
             re.search(
                 rf"(?i)\b(?:host|hostname|domain|server)\s*[:=]\s*{re.escape(domain)}\b",
@@ -87,11 +118,18 @@ def _string_safety_errors(value, path):
             )
         )
         if (
-            domain not in url_hosts
-            and (normalized_non_url_text.lower() == domain or explicitly_labeled)
-            and not _reserved_host(domain)
+            domain in url_hosts
+            or is_qualified_id
+            or is_filename
+            or _reserved_host(domain)
         ):
-            errors.append(f"{path}: non-reserved domain {domain}")
+            continue
+        location = (
+            "non-reserved domain"
+            if normalized_non_url_text.lower() == domain or explicitly_labeled
+            else "embedded non-reserved domain"
+        )
+        errors.append(f"{path}: {location} {domain}")
 
     for address_match in _IPV4.finditer(value):
         address_text = address_match.group(0)
@@ -102,12 +140,12 @@ def _string_safety_errors(value, path):
         if not _reserved_host(address_text):
             errors.append(f"{path}: non-reserved IP address {address}")
 
-    stripped = value.strip(" [](){}<>,;")
-    if ":" in stripped and not "://" in stripped:
+    for address_match in _IPV6.finditer(value):
+        address_text = address_match.group(0)
         try:
-            address = ipaddress.ip_address(stripped)
+            address = ipaddress.ip_address(address_text)
         except ValueError:
-            pass
+            continue
         else:
             if not _reserved_host(str(address)):
                 errors.append(f"{path}: non-reserved IP address {address}")
