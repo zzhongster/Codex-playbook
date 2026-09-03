@@ -65,6 +65,7 @@ TASK_4_DOCUMENT_NAMES = (
     "human-agent-collaboration",
 )
 REQUIRED_DELPHI_SECTIONS = (
+    "访问轨道选择",
     "项目与运行身份",
     "DPR、PAS 与 DFM 资产",
     "VCL 继承、Action 与事件",
@@ -274,6 +275,68 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             evidence_section,
         )
 
+    def assert_delphi_access_track_selection(self, document):
+        selection = self.section_text(document, "## 访问轨道选择")
+        self.assertIn(
+            "轨道按当前已获授权且能绑定身份的可用证据选择",
+            selection,
+        )
+        self.assertIn(
+            "只有编译产物、配置、数据库或部分源码时，选择"
+            "[灰盒访问轨道](../access-tracks/gray-box.md)",
+            selection,
+        )
+        self.assertIn(
+            "拥有完整源码和获准读取的构建材料时，选择"
+            "[白盒访问轨道](../access-tracks/white-box.md)",
+            selection,
+        )
+        self.assertIn("构建和运行仍须逐项授权", selection)
+
+    def assert_delphi_report_evidence_ceilings(self, document):
+        report = self.section_text(document, "## 报表、打印与导出")
+        matrix = self.section_text(report, "### 报表证据上限矩阵")
+        expected_rows = {
+            "静态模板/代码": (
+                "statically-supported",
+                "不得声称未执行模板的运行行为",
+            ),
+            "编译产物/元数据": (
+                "observed",
+                "只证明产物事实；源码关系保持未知",
+            ),
+            "运行输出捕获": (
+                "observed",
+                "只证明该捕获身份下出现的输出",
+            ),
+            "绑定、数据源与运行闭环": (
+                "runtime-confirmed",
+                "只确认已回放的具体报表行为",
+            ),
+        }
+        observed_rows = {}
+        for line in matrix.splitlines():
+            match = re.fullmatch(
+                r"\| ([^|]+) \| `([^`]+)` \| [^|]+ \| ([^|]+) \|",
+                line,
+            )
+            if match and match.group(1).strip() in expected_rows:
+                observed_rows[match.group(1).strip()] = (
+                    match.group(2).strip(),
+                    match.group(3).strip(),
+                )
+        self.assertEqual(expected_rows, observed_rows)
+        self.assertIn(
+            "只有申请 `runtime-confirmed` 的具体报表主张，才必须同时具备"
+            "模板/控件绑定、查询/数据源链和同一身份下的运行回放三部分证据。",
+            report,
+        )
+        self.assertIn(
+            "编译产物/元数据和已捕获运行输出仍可形成较低状态的可用主张；"
+            "不得为了凑齐链条伪造源码绑定。",
+            report,
+        )
+
     def assert_deterministic_gate_record_schema(self, document):
         gate_records = self.section_text(document, "## 门禁判定记录与 Phase 产物")
         schema = self.section_text(gate_records, "### 派生门禁记录字段")
@@ -363,6 +426,19 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 self.assertGreaterEqual(
                     len(substantive_lines), 3, f"thin Delphi section: {section_name}"
                 )
+
+    def test_delphi_guide_selects_gray_or_white_track_from_available_evidence(self):
+        document = self.read_stack_document("delphi-desktop")
+        self.assert_delphi_access_track_selection(document)
+
+        mutated = document.replace(
+            "只有编译产物、配置、数据库或部分源码时，选择"
+            "[灰盒访问轨道](../access-tracks/gray-box.md)",
+            "只有编译产物、配置、数据库或部分源码时，选择"
+            "[白盒访问轨道](../access-tracks/white-box.md)",
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_delphi_access_track_selection(mutated)
 
     def test_delphi_workflow_is_ordered_and_preserves_original_resources(self):
         document = self.read_stack_document("delphi-desktop")
@@ -466,6 +542,25 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         ):
             with self.subTest(limit=limit):
                 self.assertIn(limit, compiled)
+
+    def test_delphi_report_claim_ceiling_depends_on_available_evidence(self):
+        document = self.read_stack_document("delphi-desktop")
+        self.assert_delphi_report_evidence_ceilings(document)
+
+        mutations = {
+            "requires runtime evidence for a static claim": document.replace(
+                "只有申请 `runtime-confirmed` 的具体报表主张，才必须同时具备",
+                "只有申请 `statically-supported` 的具体报表主张，才必须同时具备",
+            ),
+            "fabricates source binding for compiled-only evidence": document.replace(
+                "不得为了凑齐链条伪造源码绑定。",
+                "必须为了凑齐链条伪造源码绑定。",
+            ),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                with self.assertRaises(AssertionError):
+                    self.assert_delphi_report_evidence_ceilings(mutation)
 
     def test_delphi_blind_spots_and_lab_stop_rules_are_explicit(self):
         document = self.read_stack_document("delphi-desktop")
