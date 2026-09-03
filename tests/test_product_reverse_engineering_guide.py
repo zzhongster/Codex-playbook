@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 import re
 import runpy
 import shlex
@@ -266,42 +267,52 @@ GJPERP_CASE_SOURCES = {
     "source:gjperp.reverse-design": (
         "docs/superpowers/specs/2026-07-17-ai-native-erp-reverse-engineering-design.md",
         "d13d11260db5fc5286140424b182e6ab507bd983",
+        "6854f8d156925cf500627e9bcd8df89e8ddbec85",
     ),
     "source:gjperp.program-roadmap": (
         "docs/superpowers/plans/2026-07-18-erp-reverse-engineering-program-roadmap.md",
         "0f85ffe7ebda979251335df3d28171ac186538c7",
+        "46bd1f4b7ba42c074b1bc064b9c599e83bef6267",
     ),
     "source:gjperp.phase0-baseline": (
         "docs/as-is/coverage/phase-0-baseline-report.md",
         "2e7601019ee59c9cd9b1abbf328cdb1d381d6ca7",
+        "105986dd8fe8621e74f6e695be7a8c33b125c3e5",
     ),
     "source:gjperp.phase2-stable-id": (
         "docs/as-is/code/phase-2-schema-and-stable-id.md",
         "24d428e51feefbdb9bee30595dd4a0214935b96d",
+        "9e45701dac8a213c65ca6749725d8dbefbb59fd3",
     ),
     "source:gjperp.phase1-runtime": (
         "docs/as-is/runtime/phase1-execution-report.md",
         "db9883510d5ec719794707a659a4d76e72dff78a",
+        "9eb06de94cb56e7f495354b7a6ee2bf0274cfc59",
     ),
     "source:gjperp.phase2-runtime": (
         "docs/as-is/runtime/phase2-execution-report.md",
         "24d428e51feefbdb9bee30595dd4a0214935b96d",
+        "37d0e948c646fc9d8b99b125cff2050a22ef4dbe",
     ),
     "source:gjperp.phase3-runtime": (
         "docs/as-is/runtime/phase3-execution-report.md",
         "fba6908cd104f6f8f089f73062ad75509c06db1f",
+        "f1993582979a14960f69354f4f86d5a518bd343f",
     ),
     "source:gjperp.phase4-runtime": (
         "docs/as-is/runtime/phase4-execution-report.md",
         "3f3fb3ec90680d4cf161ae8b7d59141eddc27a74",
+        "c9f6bf6c9422655bf1b93892b084717cc5d0120e",
     ),
     "source:gjperp.phase5-trade": (
         "docs/as-is/trade/overview.md",
         "30d0b0ea8fe42ce8479e84f28896999ee5dba521",
+        "ea5d796fd0246c57675492817a0fa28fb6b46faf",
     ),
     "source:gjperp.phase6-finance": (
         "docs/as-is/finance/overview.md",
         "e8d69a48129aca0e9fd4912d2d14e72c1d459a84",
+        "76ec79679619bc1c46d3e742221071d7b4c61174",
     ),
 }
 GJPERP_CASE_MEASUREMENTS = {
@@ -1729,17 +1740,31 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         rows = self.markdown_table(document, "## 来源链接")
         self.assertTrue(rows)
         self.assertEqual(
-            {"source_id", "phase_or_role", "source_path", "immutable_source"},
+            {
+                "source_id",
+                "phase_or_role",
+                "source_path",
+                "source_commit",
+                "blob_oid",
+                "immutable_source",
+            },
             set(rows[0]),
         )
         by_id = {row["source_id"]: row for row in rows}
         self.assertEqual(set(GJPERP_CASE_SOURCES), set(by_id))
         self.assertEqual(len(rows), len(by_id))
-        for source_id, (source_path, commit) in GJPERP_CASE_SOURCES.items():
+        blob_oids = set()
+        for source_id, (source_path, commit, blob_oid) in GJPERP_CASE_SOURCES.items():
             row = by_id[source_id]
             self.assertRegex(source_id, STABLE_ID_PATTERN)
             self.assertTrue(row["phase_or_role"].strip())
             self.assertEqual(source_path, row["source_path"])
+            self.assertEqual(commit, row["source_commit"])
+            self.assertEqual(blob_oid, row["blob_oid"])
+            self.assertRegex(commit, r"^[0-9a-f]{40}$")
+            self.assertRegex(blob_oid, r"^[0-9a-f]{40}$")
+            self.assertNotIn(blob_oid, blob_oids)
+            blob_oids.add(blob_oid)
             expected_url = (
                 "https://github.com/zzhongster/gjpERP/blob/"
                 f"{commit}/{source_path}"
@@ -1750,6 +1775,57 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             )
             self.assertIsNotNone(match, f"invalid immutable source: {source_id}")
             self.assertEqual(expected_url, match.group(1))
+        self.assertEqual(len(GJPERP_CASE_SOURCES), len(blob_oids))
+
+    def assert_gjperp_case_source_tokens_registered(self, document):
+        source_tokens = set(
+            re.findall(
+                r"(?<![A-Za-z0-9_-])source:[A-Za-z0-9_.-]+",
+                document,
+            )
+        )
+        self.assertEqual(set(GJPERP_CASE_SOURCES), source_tokens)
+
+        structured_references = set()
+        for heading, column in (
+            ("## 纵向证据链", "evidence_refs"),
+            ("## 稳定 ID", "evidence_refs"),
+            ("## 已验证方法", "project_evidence"),
+        ):
+            for row in self.markdown_table(document, heading):
+                structured_references.update(
+                    value.strip()
+                    for value in row[column].split(",")
+                    if value.strip()
+                )
+        structured_references.update(
+            row["source_id"]
+            for row in self.markdown_table(document, "### 计数注脚")
+        )
+        self.assertEqual(set(GJPERP_CASE_SOURCES), structured_references)
+
+    def assert_gjperp_local_blob_manifest(self):
+        repository_setting = os.environ.get("GJPERP_REPO")
+        if not repository_setting:
+            return
+        repository = Path(repository_setting)
+        inside = subprocess.run(
+            ["git", "-C", str(repository), "rev-parse", "--is-inside-work-tree"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, inside.returncode, inside.stderr)
+        self.assertEqual("true", inside.stdout.strip())
+        for source_id, (source_path, commit, blob_oid) in GJPERP_CASE_SOURCES.items():
+            result = subprocess.run(
+                ["git", "-C", str(repository), "rev-parse", f"{commit}:{source_path}"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, f"{source_id}: {result.stderr}")
+            self.assertEqual(blob_oid, result.stdout.strip(), source_id)
 
     def assert_gjperp_case_measurement_contract(self, document):
         rows = self.markdown_table(document, "### 计数注脚")
@@ -1838,7 +1914,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         approved_source_urls = {
             "https://github.com/zzhongster/gjpERP/blob/"
             f"{commit}/{source_path}"
-            for source_path, commit in GJPERP_CASE_SOURCES.values()
+            for source_path, commit, _blob_oid in GJPERP_CASE_SOURCES.values()
         }
 
         def retain_label_and_validate_target(match):
@@ -9386,10 +9462,24 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
     def test_gjperp_case_sources_and_measurements_are_commit_bound(self):
         document = self.read_case_study("gjperp-delphi-erp")
         self.assert_gjperp_case_source_contract(document)
+        self.assert_gjperp_case_source_tokens_registered(document)
+        self.assert_gjperp_local_blob_manifest()
         self.assert_gjperp_case_measurement_contract(document)
         source_section = self.section_text(document, "## 来源链接")
-        self.assertIn("只使用下列已提交、已脱敏的来源", source_section)
+        self.assertIn(
+            "本案例仅从下列已提交来源中摘录经脱敏的事实",
+            source_section,
+        )
+        self.assertIn(
+            "原始来源文档不是本公开案例的一部分，可能包含本地路径、历史测试身份"
+            "和环境细节",
+            source_section,
+        )
+        self.assertIn("访问与引用必须遵守授权与数据政策", source_section)
+        self.assertIn("本案例不得转录这些值", source_section)
         self.assertIn("不读取当前工作区临时态", source_section)
+        self.assertNotIn("已提交、已脱敏的来源", document)
+        self.assertNotIn("已提交、已脱敏材料", document)
 
     def test_gjperp_case_uses_stable_ids_typed_chains_and_core_claim_states(self):
         document = self.read_case_study("gjperp-delphi-erp")
@@ -9468,6 +9558,17 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         bad_source = document.replace(source_commit, "0" * 40, 1)
         with self.assertRaises(AssertionError):
             self.assert_gjperp_case_source_contract(bad_source)
+
+        source_blob_oid = GJPERP_CASE_SOURCES[
+            "source:gjperp.phase0-baseline"
+        ][2]
+        bad_blob_oid = document.replace(source_blob_oid, "f" * 40, 1)
+        with self.assertRaises(AssertionError):
+            self.assert_gjperp_case_source_contract(bad_blob_oid)
+
+        unapproved_source = document + "\n\n`source:gjperp.unapproved`\n"
+        with self.assertRaises(AssertionError):
+            self.assert_gjperp_case_source_tokens_registered(unapproved_source)
 
         measured_at = GJPERP_CASE_MEASUREMENTS[
             "outcome:gjperp.phase0-denominator"

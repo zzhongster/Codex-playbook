@@ -2,7 +2,7 @@
 
 **证据成熟度：`project-validated`**
 
-**适用范围：** 本案例只总结 gjpERP 单一遗留 Delphi ERP 项目中，由已提交、已脱敏材料支持的方法与边界；它不是目标产品的完整需求，也不证明这些方法已经跨项目成立。
+**适用范围：** 本案例只总结 gjpERP 单一遗留 Delphi ERP 项目中，从已提交来源摘录并经脱敏的事实所支持的方法与边界；它不是目标产品的完整需求，也不证明这些方法已经跨项目成立。
 
 ## 案例背景
 
@@ -16,6 +16,7 @@
 - 多份源码树是等权变体证据，目录名和记忆中的版本不能替代可执行文件、配置、数据库与运行行为的身份绑定。
 - 自动提取只建立结构地图；业务语义、特殊值、副作用、异常路径和界面行为必须由源码解释、运行证据或领域裁决补足。
 - 原始截图、日志、数据库输出和环境身份不进入公开知识页；Git 只保存脱敏引用、内容摘要、结论和复现协议。
+- 原始来源文档与本公开案例采用不同发布边界；不得因来源已经提交，就推断其中所有内容均适合转录或公开。
 - 破坏性或写入实验只允许在可恢复副本中执行；授权漂移、身份不符、源数据变化或清理失败立即停止。
 
 ## 横向分母
@@ -142,17 +143,19 @@ Phase 4 的窄证据表明源侧无业务变化且一次性副本完成清理，
 
 ## 来源链接
 
-本案例只使用下列已提交、已脱敏的来源；不读取当前工作区临时态，也不引用未提交的原始实验材料。每个链接固定到包含该文件版本的公开提交，不依赖可移动分支名。
+本案例仅从下列已提交来源中摘录经脱敏的事实；原始来源文档不是本公开案例的一部分，可能包含本地路径、历史测试身份和环境细节。访问与引用必须遵守授权与数据政策，本案例不得转录这些值；它也不读取当前工作区临时态或未提交的原始实验材料。
 
-| source_id | phase_or_role | source_path | immutable_source |
-| --- | --- | --- | --- |
-| `source:gjperp.reverse-design` | approved design | `docs/superpowers/specs/2026-07-17-ai-native-erp-reverse-engineering-design.md` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/d13d11260db5fc5286140424b182e6ab507bd983/docs/superpowers/specs/2026-07-17-ai-native-erp-reverse-engineering-design.md) |
-| `source:gjperp.program-roadmap` | program roadmap | `docs/superpowers/plans/2026-07-18-erp-reverse-engineering-program-roadmap.md` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/0f85ffe7ebda979251335df3d28171ac186538c7/docs/superpowers/plans/2026-07-18-erp-reverse-engineering-program-roadmap.md) |
-| `source:gjperp.phase0-baseline` | Phase 0 | `docs/as-is/coverage/phase-0-baseline-report.md` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/2e7601019ee59c9cd9b1abbf328cdb1d381d6ca7/docs/as-is/coverage/phase-0-baseline-report.md) |
-| `source:gjperp.phase2-stable-id` | Phase 2 identity | `docs/as-is/code/phase-2-schema-and-stable-id.md` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/24d428e51feefbdb9bee30595dd4a0214935b96d/docs/as-is/code/phase-2-schema-and-stable-id.md) |
-| `source:gjperp.phase1-runtime` | Phase 1 runtime | `docs/as-is/runtime/phase1-execution-report.md` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/db9883510d5ec719794707a659a4d76e72dff78a/docs/as-is/runtime/phase1-execution-report.md) |
-| `source:gjperp.phase2-runtime` | Phase 2 runtime | `docs/as-is/runtime/phase2-execution-report.md` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/24d428e51feefbdb9bee30595dd4a0214935b96d/docs/as-is/runtime/phase2-execution-report.md) |
-| `source:gjperp.phase3-runtime` | Phase 3 runtime | `docs/as-is/runtime/phase3-execution-report.md` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/fba6908cd104f6f8f089f73062ad75509c06db1f/docs/as-is/runtime/phase3-execution-report.md) |
-| `source:gjperp.phase4-runtime` | Phase 4 runtime | `docs/as-is/runtime/phase4-execution-report.md` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/3f3fb3ec90680d4cf161ae8b7d59141eddc27a74/docs/as-is/runtime/phase4-execution-report.md) |
-| `source:gjperp.phase5-trade` | Phase 5 parent | `docs/as-is/trade/overview.md` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/30d0b0ea8fe42ce8479e84f28896999ee5dba521/docs/as-is/trade/overview.md) |
-| `source:gjperp.phase6-finance` | Phase 6D parent | `docs/as-is/finance/overview.md` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/e8d69a48129aca0e9fd4912d2d14e72c1d459a84/docs/as-is/finance/overview.md) |
+每行同时固定 source ID、仓内路径、提交和经审计的 Git blob OID。公开链接不依赖可移动分支名；blob OID 用于证明链接所指内容与审计 manifest 一致，不表示原始来源已经通过本案例的敏感信息扫描。
+
+| source_id | phase_or_role | source_path | source_commit | blob_oid | immutable_source |
+| --- | --- | --- | --- | --- | --- |
+| `source:gjperp.reverse-design` | approved design | `docs/superpowers/specs/2026-07-17-ai-native-erp-reverse-engineering-design.md` | `d13d11260db5fc5286140424b182e6ab507bd983` | `6854f8d156925cf500627e9bcd8df89e8ddbec85` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/d13d11260db5fc5286140424b182e6ab507bd983/docs/superpowers/specs/2026-07-17-ai-native-erp-reverse-engineering-design.md) |
+| `source:gjperp.program-roadmap` | program roadmap | `docs/superpowers/plans/2026-07-18-erp-reverse-engineering-program-roadmap.md` | `0f85ffe7ebda979251335df3d28171ac186538c7` | `46bd1f4b7ba42c074b1bc064b9c599e83bef6267` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/0f85ffe7ebda979251335df3d28171ac186538c7/docs/superpowers/plans/2026-07-18-erp-reverse-engineering-program-roadmap.md) |
+| `source:gjperp.phase0-baseline` | Phase 0 | `docs/as-is/coverage/phase-0-baseline-report.md` | `2e7601019ee59c9cd9b1abbf328cdb1d381d6ca7` | `105986dd8fe8621e74f6e695be7a8c33b125c3e5` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/2e7601019ee59c9cd9b1abbf328cdb1d381d6ca7/docs/as-is/coverage/phase-0-baseline-report.md) |
+| `source:gjperp.phase2-stable-id` | Phase 2 identity | `docs/as-is/code/phase-2-schema-and-stable-id.md` | `24d428e51feefbdb9bee30595dd4a0214935b96d` | `9e45701dac8a213c65ca6749725d8dbefbb59fd3` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/24d428e51feefbdb9bee30595dd4a0214935b96d/docs/as-is/code/phase-2-schema-and-stable-id.md) |
+| `source:gjperp.phase1-runtime` | Phase 1 runtime | `docs/as-is/runtime/phase1-execution-report.md` | `db9883510d5ec719794707a659a4d76e72dff78a` | `9eb06de94cb56e7f495354b7a6ee2bf0274cfc59` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/db9883510d5ec719794707a659a4d76e72dff78a/docs/as-is/runtime/phase1-execution-report.md) |
+| `source:gjperp.phase2-runtime` | Phase 2 runtime | `docs/as-is/runtime/phase2-execution-report.md` | `24d428e51feefbdb9bee30595dd4a0214935b96d` | `37d0e948c646fc9d8b99b125cff2050a22ef4dbe` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/24d428e51feefbdb9bee30595dd4a0214935b96d/docs/as-is/runtime/phase2-execution-report.md) |
+| `source:gjperp.phase3-runtime` | Phase 3 runtime | `docs/as-is/runtime/phase3-execution-report.md` | `fba6908cd104f6f8f089f73062ad75509c06db1f` | `f1993582979a14960f69354f4f86d5a518bd343f` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/fba6908cd104f6f8f089f73062ad75509c06db1f/docs/as-is/runtime/phase3-execution-report.md) |
+| `source:gjperp.phase4-runtime` | Phase 4 runtime | `docs/as-is/runtime/phase4-execution-report.md` | `3f3fb3ec90680d4cf161ae8b7d59141eddc27a74` | `c9f6bf6c9422655bf1b93892b084717cc5d0120e` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/3f3fb3ec90680d4cf161ae8b7d59141eddc27a74/docs/as-is/runtime/phase4-execution-report.md) |
+| `source:gjperp.phase5-trade` | Phase 5 parent | `docs/as-is/trade/overview.md` | `30d0b0ea8fe42ce8479e84f28896999ee5dba521` | `ea5d796fd0246c57675492817a0fa28fb6b46faf` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/30d0b0ea8fe42ce8479e84f28896999ee5dba521/docs/as-is/trade/overview.md) |
+| `source:gjperp.phase6-finance` | Phase 6D parent | `docs/as-is/finance/overview.md` | `e8d69a48129aca0e9fd4912d2d14e72c1d459a84` | `76ec79679619bc1c46d3e742221071d7b4c61174` | [不可变提交](https://github.com/zzhongster/gjpERP/blob/e8d69a48129aca0e9fd4912d2d14e72c1d459a84/docs/as-is/finance/overview.md) |
