@@ -315,8 +315,12 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIsNotNone(match, "missing copyable YAML metadata block")
         return match.group(1)
 
-    def parse_yaml_metadata(self, document):
-        block = self.yaml_metadata_block(document)
+    def yaml_metadata_blocks(self, document):
+        blocks = re.findall(r"(?ms)^```yaml\n(.+?)\n```$", document)
+        self.assertTrue(blocks, "missing copyable YAML metadata blocks")
+        return blocks
+
+    def parse_yaml_block(self, block):
         try:
             metadata = yaml.safe_load(block)
         except yaml.YAMLError as error:
@@ -324,6 +328,15 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIsInstance(metadata, dict)
         self.assertTrue(metadata)
         return metadata
+
+    def parse_yaml_metadata(self, document):
+        return self.parse_yaml_block(self.yaml_metadata_block(document))
+
+    def parse_all_yaml_metadata(self, document):
+        return [
+            self.parse_yaml_block(block)
+            for block in self.yaml_metadata_blocks(document)
+        ]
 
     def assert_qualified_references(self, references, expected_prefix=None):
         self.assertIsInstance(references, list)
@@ -466,14 +479,21 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         gate_record_references = []
         for gate_id, gate in gates.items():
             self.assertIsInstance(gate, dict)
+            expected_fields = {
+                "gate_record_reference",
+                "verdict",
+                "reviewer",
+                "decided_at",
+                "evidence_references",
+            }
+            if gate_id == "G5":
+                expected_fields |= {
+                    "selected_branch",
+                    "runtime_confirmation_status",
+                    "static_non_runtime_coverage",
+                }
             self.assertEqual(
-                {
-                    "gate_record_reference",
-                    "verdict",
-                    "reviewer",
-                    "decided_at",
-                    "evidence_references",
-                },
+                expected_fields,
                 set(gate),
             )
             allowed_verdicts = GATE_VERDICTS - (
@@ -503,13 +523,67 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                     set(metadata["evidence_references"])
                 )
             )
+            if gate_id == "G5":
+                self.assert_g5_branch_combination(gate)
         self.assertEqual(
             len(gate_record_references), len(set(gate_record_references))
         )
 
-    def assert_experiment_template_metadata(self, metadata):
+    def assert_g5_branch_combination(self, gate):
+        self.assertIn(gate["selected_branch"], {"runtime", "approved-static"})
+        self.assertIn(
+            gate["runtime_confirmation_status"],
+            {
+                "required",
+                "confirmed",
+                "unavailable-with-approved-static-ceiling",
+            },
+        )
+        coverage = gate["static_non_runtime_coverage"]
+        self.assertIsInstance(coverage, dict)
+        self.assertEqual(
+            {"gap_artifact_reference", "gap_count"}, set(coverage)
+        )
+        self.assertIsInstance(coverage["gap_count"], int)
+        self.assertGreaterEqual(coverage["gap_count"], 0)
+
+        combination = (
+            gate["selected_branch"],
+            gate["verdict"],
+            gate["runtime_confirmation_status"],
+        )
+        self.assertIn(
+            combination,
+            {
+                ("runtime", "pending", "required"),
+                ("runtime", "fail", "required"),
+                ("runtime", "pass", "confirmed"),
+                (
+                    "approved-static",
+                    "pass",
+                    "unavailable-with-approved-static-ceiling",
+                ),
+                (
+                    "approved-static",
+                    "fail",
+                    "unavailable-with-approved-static-ceiling",
+                ),
+            },
+        )
+        gap_reference = coverage["gap_artifact_reference"]
+        if gate["selected_branch"] == "runtime":
+            self.assertIsNone(gap_reference)
+            self.assertEqual(0, coverage["gap_count"])
+        else:
+            self.assertIsInstance(gap_reference, dict)
+            self.assertEqual({"id", "sha256"}, set(gap_reference))
+            for identity_part in gap_reference.values():
+                self.assertIsInstance(identity_part, str)
+                self.assertTrue(identity_part.strip())
+            self.assertGreaterEqual(coverage["gap_count"], 1)
+
+    def assert_experiment_protocol_metadata(self, metadata):
         required = {
-            "artifacts",
             "fingerprints",
             "action_permissions",
             "operational_limits",
@@ -526,12 +600,6 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "reproduction_criteria",
             "protocol_steps",
             "expected_observations",
-            "run_results",
-            "independent_reproduction_results",
-            "first_failure",
-            "side_effect_records",
-            "cleanup",
-            "residual_checks",
             "authorization_record_id",
             "authorization_gate_record_id",
             "environment_identity",
@@ -539,13 +607,6 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "sentinel",
         }
         self.assertTrue(required.issubset(metadata))
-        self.assertEqual(
-            {"protocol_artifact_id", "result_artifact_id", "effects_artifact_id"},
-            set(metadata["artifacts"]),
-        )
-        for artifact_id in metadata["artifacts"].values():
-            self.assertIsInstance(artifact_id, str)
-            self.assertTrue(artifact_id.strip())
         self.assertEqual(
             {"source", "artifact", "clone"}, set(metadata["fingerprints"])
         )
@@ -646,10 +707,54 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             metadata["reproduction_criteria"]["independent_executor_required"],
             bool,
         )
+
+    def assert_experiment_artifact_envelope(self, metadata, artifact_type):
+        required = {
+            "artifact_type",
+            "artifact_id",
+            "content_hash",
+            "status",
+            "created_at",
+            "owner",
+            "product_version",
+            "scope_or_module",
+            "evidence_references",
+        }
+        self.assertTrue(required.issubset(metadata))
+        self.assertEqual(artifact_type, metadata["artifact_type"])
+        self.assertRegex(metadata["artifact_id"], STABLE_ID_PATTERN)
+        self.assertTrue(metadata["artifact_id"].startswith("artifact:"))
+        self.assertIsInstance(metadata["content_hash"], str)
+        self.assertTrue(metadata["content_hash"].startswith("sha256:"))
+        self.assertGreater(len(metadata["content_hash"]), len("sha256:"))
+        self.assertIn(metadata["status"], RECORD_STATUSES)
+        for key in ("created_at", "owner", "product_version", "scope_or_module"):
+            self.assertIsInstance(metadata[key], str)
+            self.assertTrue(metadata[key].strip())
+        self.assert_qualified_references(metadata["evidence_references"], "evidence")
+
+    def assert_experiment_result_metadata(self, metadata):
+        self.assertEqual(
+            {
+                "artifact_type",
+                "artifact_id",
+                "content_hash",
+                "status",
+                "created_at",
+                "owner",
+                "product_version",
+                "scope_or_module",
+                "evidence_references",
+                "protocol_reference",
+                "run_results",
+                "independent_reproduction_results",
+                "first_failure",
+            },
+            set(metadata),
+        )
         for list_key in ("run_results", "independent_reproduction_results"):
             self.assertIsInstance(metadata[list_key], list)
-        self.assertTrue(metadata["run_results"])
-        self.assertTrue(metadata["independent_reproduction_results"])
+            self.assertTrue(metadata[list_key])
         for result in (
             *metadata["run_results"],
             *metadata["independent_reproduction_results"],
@@ -703,6 +808,26 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.assertIsInstance(metadata["first_failure"][list_key], list)
         self.assert_qualified_references(
             metadata["first_failure"]["evidence_references"], "evidence"
+        )
+
+    def assert_experiment_effects_metadata(self, metadata):
+        self.assertEqual(
+            {
+                "artifact_type",
+                "artifact_id",
+                "content_hash",
+                "status",
+                "created_at",
+                "owner",
+                "product_version",
+                "scope_or_module",
+                "evidence_references",
+                "protocol_reference",
+                "side_effect_records",
+                "cleanup",
+                "residual_checks",
+            },
+            set(metadata),
         )
         self.assertIsInstance(metadata["side_effect_records"], list)
         self.assertTrue(metadata["side_effect_records"])
@@ -761,6 +886,60 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assert_qualified_references(
             metadata["residual_checks"]["evidence_references"], "evidence"
         )
+
+    def assert_experiment_artifact_packages(self, artifacts):
+        self.assertEqual(3, len(artifacts))
+        by_type = {artifact.get("artifact_type"): artifact for artifact in artifacts}
+        self.assertEqual(
+            {"ART-P5-PROTOCOL", "ART-P5-RESULT", "ART-P5-EFFECTS"},
+            set(by_type),
+        )
+        protocol = by_type["ART-P5-PROTOCOL"]
+        result = by_type["ART-P5-RESULT"]
+        effects = by_type["ART-P5-EFFECTS"]
+        for artifact_type, metadata in by_type.items():
+            self.assert_experiment_artifact_envelope(metadata, artifact_type)
+        self.assertEqual(3, len({item["artifact_id"] for item in artifacts}))
+        self.assertEqual(3, len({item["content_hash"] for item in artifacts}))
+        self.assertEqual("frozen", protocol["status"])
+        self.assertEqual(protocol["record_id"], protocol["artifact_id"])
+        self.assert_common_record_metadata(protocol)
+        self.assert_composite_template_metadata(protocol)
+        self.assert_experiment_protocol_metadata(protocol)
+        self.assert_experiment_result_metadata(result)
+        self.assert_experiment_effects_metadata(effects)
+
+        protocol_reference = {
+            "protocol_id": protocol["artifact_id"],
+            "protocol_content_hash": protocol["content_hash"],
+        }
+        self.assertEqual(protocol_reference, result["protocol_reference"])
+        self.assertEqual(protocol_reference, effects["protocol_reference"])
+        protocol_only_fields = {
+            "authorization_record_id",
+            "authorization_gate_record_id",
+            "environment_identity",
+            "pre_state_fingerprint",
+            "fingerprints",
+            "sentinel",
+            "action_permissions",
+            "operational_limits",
+            "recovery",
+            "target_claim_references",
+            "protocol_frozen_at",
+            "role_and_test_account",
+            "inputs",
+            "alternative_explanations",
+            "variables",
+            "wait_conditions",
+            "tool_versions",
+            "forbidden_side_effects",
+            "reproduction_criteria",
+            "protocol_steps",
+            "expected_observations",
+        }
+        for derived_artifact in (result, effects):
+            self.assertTrue(protocol_only_fields.isdisjoint(derived_artifact))
 
     def assert_guided_sections(self, document, headings):
         for heading in headings:
@@ -2210,9 +2389,22 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 )
 
         experiment = self.read_template_document("experiment-record")
-        experiment_metadata = self.parse_yaml_metadata(experiment)
-        self.assert_composite_template_metadata(experiment_metadata)
-        self.assert_experiment_template_metadata(experiment_metadata)
+        experiment_artifacts = self.parse_all_yaml_metadata(experiment)
+        self.assert_experiment_artifact_packages(experiment_artifacts)
+        for artifact_heading in (
+            "## ART-P5-PROTOCOL 协议包",
+            "## ART-P5-RESULT 结果包",
+            "## ART-P5-EFFECTS 副作用与处置包",
+        ):
+            self.assertIn(artifact_heading, experiment)
+        for boundary_statement in (
+            "三个 YAML 块是三个独立产物",
+            "RESULT 与 EFFECTS 只能引用",
+            "协议一旦冻结",
+            "计算 content hash 时排除 `content_hash` 包络字段",
+        ):
+            self.assertIn(boundary_statement, experiment)
+        self.assertNotIn("用 `artifacts` 分别登记", experiment)
 
         claim = self.read_template_document("claim-evidence-record")
         claim_metadata = self.parse_yaml_metadata(claim)
@@ -2292,14 +2484,101 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.assert_coverage_gate_metadata(mutation)
 
-    def test_experiment_template_rejects_a_missing_required_field(self):
+    def test_coverage_template_rejects_invalid_g5_branch_combinations(self):
         metadata = self.parse_yaml_metadata(
+            self.read_template_document("coverage-and-freeze")
+        )
+        g5 = metadata["gates"]["G5"]
+        self.assertTrue(
+            {
+                "selected_branch",
+                "runtime_confirmation_status",
+                "static_non_runtime_coverage",
+            }.issubset(g5)
+        )
+        self.assert_g5_branch_combination(g5)
+
+        approved_static = copy.deepcopy(g5)
+        approved_static["selected_branch"] = "approved-static"
+        approved_static["verdict"] = "pass"
+        approved_static[
+            "runtime_confirmation_status"
+        ] = "unavailable-with-approved-static-ceiling"
+        approved_static["static_non_runtime_coverage"] = {
+            "gap_artifact_reference": {
+                "id": "REPLACE_WITH_ART_P5_RUNTIME_GAP_ID",
+                "sha256": "REPLACE_WITH_SHA256",
+            },
+            "gap_count": 1,
+        }
+        self.assert_g5_branch_combination(approved_static)
+
+        invalid_mutations = []
+        runtime_confirmed_while_pending = copy.deepcopy(g5)
+        runtime_confirmed_while_pending[
+            "runtime_confirmation_status"
+        ] = "confirmed"
+        invalid_mutations.append(runtime_confirmed_while_pending)
+        static_claims_runtime_confirmation = copy.deepcopy(approved_static)
+        static_claims_runtime_confirmation[
+            "runtime_confirmation_status"
+        ] = "confirmed"
+        invalid_mutations.append(static_claims_runtime_confirmation)
+        static_hides_gap = copy.deepcopy(approved_static)
+        static_hides_gap["static_non_runtime_coverage"]["gap_count"] = 0
+        invalid_mutations.append(static_hides_gap)
+        for mutation in invalid_mutations:
+            with self.subTest(mutation=mutation):
+                with self.assertRaises(AssertionError):
+                    self.assert_g5_branch_combination(mutation)
+
+    def test_experiment_template_rejects_missing_artifact_or_protocol_field(self):
+        artifacts = self.parse_all_yaml_metadata(
             self.read_template_document("experiment-record")
         )
-        mutation = copy.deepcopy(metadata)
-        del mutation["recovery"]["max_restore_time"]
+        self.assertEqual(3, len(artifacts))
+
+        missing_artifact = copy.deepcopy(artifacts[:-1])
         with self.assertRaises(AssertionError):
-            self.assert_experiment_template_metadata(mutation)
+            self.assert_experiment_artifact_packages(missing_artifact)
+
+        missing_protocol_field = copy.deepcopy(artifacts)
+        protocol = next(
+            item
+            for item in missing_protocol_field
+            if item["artifact_type"] == "ART-P5-PROTOCOL"
+        )
+        del protocol["recovery"]["max_restore_time"]
+        with self.assertRaises(AssertionError):
+            self.assert_experiment_artifact_packages(missing_protocol_field)
+
+    def test_experiment_result_and_effects_reject_protocol_boundary_tampering(self):
+        artifacts = self.parse_all_yaml_metadata(
+            self.read_template_document("experiment-record")
+        )
+        self.assertEqual(3, len(artifacts))
+
+        tampered_hash = copy.deepcopy(artifacts)
+        result = next(
+            item
+            for item in tampered_hash
+            if item["artifact_type"] == "ART-P5-RESULT"
+        )
+        result["protocol_reference"][
+            "protocol_content_hash"
+        ] = "sha256:TAMPERED"
+        with self.assertRaises(AssertionError):
+            self.assert_experiment_artifact_packages(tampered_hash)
+
+        copied_protocol_truth = copy.deepcopy(artifacts)
+        effects = next(
+            item
+            for item in copied_protocol_truth
+            if item["artifact_type"] == "ART-P5-EFFECTS"
+        )
+        effects["expected_observations"] = []
+        with self.assertRaises(AssertionError):
+            self.assert_experiment_artifact_packages(copied_protocol_truth)
 
     def test_required_entry_files_exist(self):
         for path in REQUIRED_ENTRY_FILES:

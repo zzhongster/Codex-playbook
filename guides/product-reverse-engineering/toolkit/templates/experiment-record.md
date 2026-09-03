@@ -1,10 +1,16 @@
 # 运行时实验记录模板
 
+## ART-P5-PROTOCOL 协议包
+
 ```yaml
-record_id: "REPLACE_WITH_QUALIFIED_EXPERIMENT_ID"
+artifact_type: "ART-P5-PROTOCOL"
+artifact_id: "artifact:p5-protocol.template-replace-me"
+record_id: "artifact:p5-protocol.template-replace-me"
+content_hash: "sha256:REPLACE_WITH_PROTOCOL_CONTENT_HASH"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"
 scope_or_module: "REPLACE_WITH_QUALIFIED_SCOPE_OR_MODULE_ID"
-status: "draft"
+status: "frozen"
+created_at: "YYYY-MM-DDTHH:MM:SSZ"
 evidence_references:
   - "evidence:template.replace-me"
 owner: "REPLACE_WITH_NAMED_HUMAN_OWNER"
@@ -17,10 +23,6 @@ method_definitions:
 evidence_method_entries:
   - evidence_id: "evidence:template.replace-me"
     method_id: "method:template.replace-me"
-artifacts:
-  protocol_artifact_id: "REPLACE_WITH_ART_P5_PROTOCOL_ID"
-  result_artifact_id: "REPLACE_WITH_ART_P5_RESULT_ID"
-  effects_artifact_id: "REPLACE_WITH_ART_P5_EFFECTS_ID"
 authorization_record_id: "REPLACE_WITH_ART_P0_AUTH_ID"
 authorization_gate_record_id: "REPLACE_WITH_CURRENT_ART_G0_AUTH_ID"
 environment_identity: "REPLACE_WITH_IMMUTABLE_ENVIRONMENT_IDENTITY_AND_HASHES"
@@ -99,6 +101,23 @@ expected_observations:
     surface: "REPLACE_WITH_UI_NETWORK_LOG_DATA_MESSAGE_FILE_OR_OTHER"
     expected: "REPLACE_WITH_PRECOMMITTED_EXPECTATION"
     tolerance: "REPLACE_WITH_TOLERANCE_OR_EXACT"
+```
+
+## ART-P5-RESULT 结果包
+
+```yaml
+artifact_type: "ART-P5-RESULT"
+artifact_id: "artifact:p5-result.template-replace-me"
+content_hash: "sha256:REPLACE_WITH_RESULT_CONTENT_HASH"
+status: "draft"
+created_at: "YYYY-MM-DDTHH:MM:SSZ"
+owner: "REPLACE_WITH_NAMED_RESULT_OWNER"
+product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"
+scope_or_module: "REPLACE_WITH_QUALIFIED_SCOPE_OR_MODULE_ID"
+evidence_references: []
+protocol_reference:
+  protocol_id: "artifact:p5-protocol.template-replace-me"
+  protocol_content_hash: "sha256:REPLACE_WITH_PROTOCOL_CONTENT_HASH"
 run_results:
   - run_id: "run:template.primary-run"
     started_at: "YYYY-MM-DDTHH:MM:SSZ"
@@ -131,6 +150,23 @@ first_failure:
   correlation_ids: []
   evidence_references: []
   preserved_before_retry: false
+```
+
+## ART-P5-EFFECTS 副作用与处置包
+
+```yaml
+artifact_type: "ART-P5-EFFECTS"
+artifact_id: "artifact:p5-effects.template-replace-me"
+content_hash: "sha256:REPLACE_WITH_EFFECTS_CONTENT_HASH"
+status: "draft"
+created_at: "YYYY-MM-DDTHH:MM:SSZ"
+owner: "REPLACE_WITH_NAMED_EFFECTS_OWNER"
+product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"
+scope_or_module: "REPLACE_WITH_QUALIFIED_SCOPE_OR_MODULE_ID"
+evidence_references: []
+protocol_reference:
+  protocol_id: "artifact:p5-protocol.template-replace-me"
+  protocol_content_hash: "sha256:REPLACE_WITH_PROTOCOL_CONTENT_HASH"
 side_effect_records:
   - effect_id: "effect:template.replace-me"
     kind: "REPLACE_WITH_WRITE_OR_EGRESS_OR_OTHER_EFFECT_KIND"
@@ -161,13 +197,17 @@ residual_checks:
 
 方法成熟度只评价取证、建模或验证方法及其证据基础，不评价目标产品事实；产品主张必须在主张—证据记录中使用 `claim_status`、`confidence` 和支持/反驳证据引用。
 
-顶层 `status` 是本记录的生命周期状态；这里只保存 `claim_references`，实验支持的主张真值只在主张—证据记录维护。`method_definitions[].method_maturity` 只评价对应方法，映射必须同时解析到本记录的 evidence 与 method ID。
+每个 YAML 块的 `status` 都是该产物自己的生命周期状态；只有 PROTOCOL 保存 `claim_references`，实验支持的主张真值仍只在主张—证据记录维护。`method_definitions[].method_maturity` 只评价对应方法，映射必须同时解析到 PROTOCOL 的 evidence 与 method ID。
 
 `template.replace-me` 仅演示引用闭合；发布前必须替换为已登记 ID，或同时删除 evidence、method 与映射示例。
 
+三个 YAML 块是三个独立产物，分别拥有 `artifact_id`、`content_hash`、`status`、`created_at` 和 `owner`，可以单独签名、替换或撤回。计算 content hash 时排除 `content_hash` 包络字段，并对其余规范化 YAML 负载计算 SHA-256，避免自引用哈希。
+
+PROTOCOL 在首次执行前完成并置为 `frozen`。协议一旦冻结，运行结果、首次失败、副作用、清理或残留检查都不得回写协议；协议变化必须创建新 `artifact_id` 与 hash。RESULT 与 EFFECTS 只能引用精确的 `protocol_id` 和 `protocol_content_hash`，不得复制可被事后改写的协议字段。
+
 ## 不可变环境与授权
 
-- 用 `artifacts` 分别登记 ART-P5 protocol/result/effects 产物身份；在执行前写入 `protocol_frozen_at`，固定 environment identity、构建、部署、运行时、依赖、配置哈希、功能开关、时区、角色、测试账号和输入指纹。
+- 在 PROTOCOL 执行前写入 `protocol_frozen_at`，固定 environment identity、构建、部署、运行时、依赖、配置哈希、功能开关、时区、角色、测试账号和输入指纹。
 - 分别记录 source、artifact 与 clone fingerprint；来源不可用或无克隆时显式说明，不用空字符串冒充相同身份。
 - 引用当前 `ART-G0-AUTH` 的 `pass`，按 read、write、fault-injection、egress、cleanup 分别给授权判定和来源；默认 `not-authorized`，不得由读取权限推定其他动作。
 - 固定 cost、rate、blast radius 上限；任一上限或授权来源不明确时停止相应动作。
