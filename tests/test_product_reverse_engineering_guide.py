@@ -111,6 +111,25 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         )
         self.assertIn("摘要哈希只出现在父摘要或冻结清单", phase_summary)
 
+    def assert_acyclic_freeze_generation(self, document):
+        freeze_order = self.section_text(document, "## 无环冻结生成顺序")
+        ordered_outputs = (
+            "content outputs",
+            "child/phase summaries",
+            "root summary",
+            "detached freeze manifest/attestation",
+        )
+        positions = []
+        for step, output in enumerate(ordered_outputs, start=1):
+            marker = f"{step}. `{output}`"
+            self.assertIn(marker, freeze_order)
+            positions.append(freeze_order.index(marker))
+        self.assertEqual(sorted(positions), positions)
+        self.assertIn("排除自身包络和所有证明", freeze_order)
+        self.assertIn("位于每个阶段摘要的输出哈希集合之外", freeze_order)
+        self.assertIn("Git commit 或外部签名", freeze_order)
+        self.assertIn("不得递归包含自身哈希", freeze_order)
+
     def test_required_entry_files_exist(self):
         for path in REQUIRED_ENTRY_FILES:
             self.assertTrue(path.is_file(), f"missing required entry file: {path}")
@@ -705,7 +724,36 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 )
         self.assertIn("Phase 2 后 G3 保持 `pending`", mapping)
         self.assertIn("获批非运行分支", mapping)
-        self.assertIn("`not-applicable`", mapping)
+        self.assertIn("运行分支和获批非运行分支都必须判为 `pass` 或 `fail`", mapping)
+
+    def test_g5_has_branch_specific_verdict_and_runtime_confirmation_status(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        g5 = self.section_text(document, "## G5 分支判定")
+        expected_rows = (
+            ("运行分支", "pass/fail", "required/confirmed"),
+            (
+                "获批非运行分支",
+                "pass/fail",
+                "unavailable-with-approved-static-ceiling",
+            ),
+        )
+        for branch, verdict, runtime_status in expected_rows:
+            with self.subTest(branch=branch):
+                self.assertRegex(
+                    g5,
+                    rf"(?m)^\| {re.escape(branch)} \| `{re.escape(verdict)}` \| `{re.escape(runtime_status)}` \| .+ \|$",
+                )
+        for requirement in (
+            "`ART-P5-STATIC`",
+            "`ART-P5-RUNTIME-GAP`",
+            "`ART-P5-STATIC-ACCEPTANCE`",
+            "风险接受",
+            "验证上限",
+            "未来验证方法",
+        ):
+            with self.subTest(requirement=requirement):
+                self.assertIn(requirement, g5)
+        self.assertIn("G5 不得使用 `not-applicable`", g5)
 
     def test_gate_records_derive_from_named_phase_artifacts_without_replacing_them(self):
         document = self.read_foundation_document("coverage-quality-and-freeze")
@@ -731,6 +779,33 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 self.assertTrue(referenced_artifacts)
                 for artifact in referenced_artifacts:
                     self.assertIn(f"`{artifact}`", workflow)
+
+    def test_gate_records_verify_immutable_human_decisions_as_inputs(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        records = self.section_text(document, "## 门禁判定记录与 Phase 产物")
+        decision_inputs = {
+            "G0": "ART-P0-AUTH",
+            "G5": "ART-P5-STATIC-ACCEPTANCE",
+            "G6": "ART-P7-ACCEPTANCE",
+            "G7": "ART-P8-APPROVAL",
+        }
+        for gate, decision_artifact in decision_inputs.items():
+            row = next(
+                line for line in records.splitlines() if line.startswith(f"| `{gate}` |")
+            )
+            with self.subTest(gate=gate):
+                self.assertIn(f"`{decision_artifact}`", row)
+
+        boundary = self.section_text(document, "## 人类决定与派生门禁的边界")
+        for contract in (
+            "不可变输入",
+            "规则版本",
+            "不得生成评审者身份、批准时间、决定或签名",
+            "派生且固定的来源元数据",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, boundary)
+        self.assertIn("人工决定先于门禁判定", boundary)
 
     def test_coverage_summaries_and_freeze_are_deterministic_and_append_only(self):
         document = self.read_foundation_document("coverage-quality-and-freeze")
@@ -790,6 +865,45 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         )
         with self.assertRaises(AssertionError):
             self.assert_phase_summary_self_hash_invariant(mutated)
+
+    def test_freeze_generation_order_is_explicit_and_acyclic(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        self.assert_acyclic_freeze_generation(document)
+
+    def test_freeze_no_cycle_invariant_rejects_recursive_attestation_mutation(self):
+        document = self.read_foundation_document("coverage-quality-and-freeze")
+        mutated = document.replace(
+            "位于每个阶段摘要的输出哈希集合之外",
+            "位于每个阶段摘要的输出哈希集合之内",
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_acyclic_freeze_generation(mutated)
+
+    def test_phase_8_artifacts_follow_detached_freeze_order(self):
+        workflow = self.read_foundation_document("end-to-end-workflow")
+        phase_8 = self.section_text(workflow, "### Phase 8")
+        actions = self.section_text(phase_8, "#### 执行动作")
+        for step, output in enumerate(
+            (
+                "content outputs",
+                "child/phase summaries",
+                "root summary",
+                "detached freeze manifest/attestation",
+            ),
+            start=1,
+        ):
+            with self.subTest(step=step):
+                self.assertRegex(actions, rf"(?m)^{step}\. .*`{re.escape(output)}`")
+
+        deliverables = self.section_text(phase_8, "#### 交付物")
+        for artifact in (
+            "ART-P8-APPROVAL",
+            "ART-P8-ROOT-SUMMARY",
+            "ART-P8-FREEZE",
+        ):
+            with self.subTest(artifact=artifact):
+                self.assertIn(f"`{artifact}`", deliverables)
+        self.assertIn("分离式冻结清单/证明", deliverables)
 
     def test_artifact_and_summary_lifecycle_is_separate_from_claim_status(self):
         document = self.read_foundation_document("coverage-quality-and-freeze")

@@ -49,11 +49,11 @@
 | `G2` | 技术资产、入口交叉索引和动态边界可定位；结构事实与业务语义推断分开，未知依赖进入队列 | 技术目录判定 `ART-G2-TECHNICAL` |
 | `G3` | 角色、产品表面和场景已与关键纵向切片、类型化边、反证及验证候选共同建立产品追踪 | 产品追踪判定 `ART-G3-PRODUCT-TRACE` |
 | `G4` | 能力、旅程、状态、规则、权限、语义和不变量可追到证据；冲突、错误与补偿没有被理想流程吞掉 | 语义模型判定 `ART-G4-SEMANTICS` |
-| `G5` | 运行分支有可复现实验、首错和副作用核对；只有获批非运行分支可使用 `not-applicable`，且仍须有静态记录、运行缺口和状态上限 | 验证分支判定 `ART-G5-VALIDATION` |
+| `G5` | 运行分支和获批非运行分支都按各自必备产物判为 `pass` 或 `fail`；运行确认状态另行记录，不能替代门禁判定 | 验证分支判定 `ART-G5-VALIDATION` |
 | `G6` | 九类覆盖率可复算，P0/P1 已解决或获有效书面接受，冲突、未知、链接和质量检查通过 | 审计判定 `ART-G6-AUDIT` |
-| `G7` | 人类评审人批准目的专用交付、限制与发布说明，冻结输入和内容身份可重建且处置责任明确 | 发布冻结记录 `ART-G7-RELEASE` |
+| `G7` | 人类评审人批准目的专用交付、限制与发布说明，冻结输入和内容身份可重建且处置责任明确 | 发布就绪判定 `ART-G7-RELEASE` |
 
-G0 复用[授权、隐私与安全](authorization-privacy-and-safety.md)的硬门禁；G5 的非运行路径复用 `ART-P5-STATIC` 与 `ART-P5-RUNTIME-GAP`，不得标为 `runtime-confirmed`。G7 通过只说明该冻结交付满足批准的发布契约，不提高产品主张的置信度或方法成熟度。
+G0 复用[授权、隐私与安全](authorization-privacy-and-safety.md)的硬门禁；G5 的非运行路径复用 `ART-P5-STATIC` 与 `ART-P5-RUNTIME-GAP`，不得标为 `runtime-confirmed`。G7 `pass` 是生成根摘要和分离式冻结证明前的发布就绪判定；Phase 8 只有在最后生成的证明也有效时才退出。两者都不提高产品主张的置信度或方法成熟度。
 
 ## 门禁判定生命周期
 
@@ -78,13 +78,24 @@ G0 复用[授权、隐私与安全](authorization-privacy-and-safety.md)的硬�
 | Phase 1 | `G1` | 从不可变基线、范围分母和覆盖/变更规则判定输入与分母冻结 |
 | Phase 2 + Phase 4 | `G3` | Phase 2 建立角色、产品表面和场景候选，Phase 4 补齐纵向追踪骨架、反证和切片；二者共同完成产品追踪判定 |
 | Phase 3 | `G2` | 从技术资产图谱、入口交叉索引和动态盲区判定技术目录质量 |
-| Phase 5 | `G5` | 运行分支据协议、结果与副作用核对判定；仅获批非运行分支可将运行门禁记为 `not-applicable`，并必须引用静态验证与运行缺口记录 |
+| Phase 5 | `G5` | 运行分支按实验、首错、副作用与复现判定；获批非运行分支按静态验证、运行缺口、人工接受、验证上限和未来验证方法判定 |
 | Phase 6 | `G4` | 从产品、行为、语义和不变量模型判定业务语义综合质量 |
 | Phase 7 | `G6` | 从完整性审计、冲突处置和已接受不确定性判定覆盖与发布风险 |
 | Phase 8 | `G7` | 从冻结清单、目的专用映射和发布说明判定可重建发布 |
 | Phase 9 | `受影响门禁` | 影响分析先把受影响门禁退回 `pending`，再按其原负责 Phase 与新输入重验；不受影响门禁保留原判定和哈希 |
 
-Phase 2 后 G3 保持 `pending`，直到 Phase 4 的共同输入齐全并完成派生判定。Phase 5 选择获批非运行分支时，`not-applicable` 只作用于缺失的运行确认门禁，不消除 `ART-P5-STATIC`、`ART-P5-RUNTIME-GAP`、风险接受、最高主张状态和后续发布限制。
+Phase 2 后 G3 保持 `pending`，直到 Phase 4 的共同输入齐全并完成派生判定。Phase 5 的运行分支和获批非运行分支都必须判为 `pass` 或 `fail`；运行确认是否可得由下节的独立状态表达，不能借 `not-applicable` 消除任何分支义务。
+
+## G5 分支判定
+
+G5 先记录所选分支，再分别计算 gate verdict 与 runtime-confirmation status。门禁判定回答“该分支的强制控制是否齐全”，运行确认状态回答“该范围是否需要、获得或经批准无法获得运行证据”；两个字段不能互相覆盖。
+
+| 分支 | G5 gate verdict | runtime-confirmation status | `pass` / `fail` 判据 |
+| --- | --- | --- | --- |
+| 运行分支 | `pass/fail` | `required/confirmed` | 开始时为 `required`；只有 `ART-P5-PROTOCOL`、`ART-P5-RESULT`、`ART-P5-EFFECTS` 完整，首错、实际结果、副作用、清理与独立复现通过时才成为 `confirmed` 且 G5 `pass`，否则 G5 `fail` |
+| 获批非运行分支 | `pass/fail` | `unavailable-with-approved-static-ceiling` | 只有允许理由、`ART-P5-STATIC`、`ART-P5-RUNTIME-GAP`、`ART-P5-STATIC-ACCEPTANCE`、风险接受、验证上限、适用期限、重开条件和未来验证方法均完整时 G5 `pass`，任一缺失即 `fail` |
+
+**G5 不得使用 `not-applicable`。** 非运行分支只是 runtime-confirmation status 为 `unavailable-with-approved-static-ceiling`，不是验证职责不存在；其 G5 `pass` 只证明静态替代分支治理完整，不产生 `runtime-confirmed`，也不删除后续运行证据缺口。未来验证方法至少写明可用环境/授权出现后要执行的协议、观测点、责任人和触发日期或条件。
 
 ## 门禁判定记录与 Phase 产物
 
@@ -97,11 +108,19 @@ Phase 2 后 G3 保持 `pending`，直到 Phase 4 的共同输入齐全并完成�
 | `G2` | `ART-G2-TECHNICAL` | `ART-P3-ATLAS`、`ART-P3-ENTRY-XREF`、`ART-P3-DYNAMIC` |
 | `G3` | `ART-G3-PRODUCT-TRACE` | `ART-P2-SURFACE`、`ART-P2-ROLE`、`ART-P2-SCENARIO`、`ART-P4-TRACE`、`ART-P4-GAP`、`ART-P4-SLICE` |
 | `G4` | `ART-G4-SEMANTICS` | `ART-P6-PRODUCT`、`ART-P6-BEHAVIOR`、`ART-P6-SEMANTICS` |
-| `G5` | `ART-G5-VALIDATION` | 运行分支引用 `ART-P5-PROTOCOL`、`ART-P5-RESULT`、`ART-P5-EFFECTS`；非运行分支引用 `ART-P5-STATIC`、`ART-P5-RUNTIME-GAP` |
-| `G6` | `ART-G6-AUDIT` | `ART-P7-AUDIT`、`ART-P7-CONFLICT`、`ART-P7-UNCERTAINTY` |
-| `G7` | `ART-G7-RELEASE` | `ART-P8-FREEZE`、`ART-P8-RELEASE`，以及选定目的的 `ART-P8-REWRITE`、`ART-P8-MIGRATION`、`ART-P8-REPLACEMENT`、`ART-P8-DUE-DILIGENCE` 或 `ART-P8-COMPETITOR` |
+| `G5` | `ART-G5-VALIDATION` | 运行分支引用 `ART-P5-PROTOCOL`、`ART-P5-RESULT`、`ART-P5-EFFECTS`；非运行分支引用 `ART-P5-STATIC`、`ART-P5-RUNTIME-GAP`、`ART-P5-STATIC-ACCEPTANCE` |
+| `G6` | `ART-G6-AUDIT` | `ART-P7-AUDIT`、`ART-P7-CONFLICT`、`ART-P7-UNCERTAINTY`、`ART-P7-ACCEPTANCE` |
+| `G7` | `ART-G7-RELEASE` | `ART-P8-APPROVAL`、`ART-P8-RELEASE`，以及选定目的的 `ART-P8-REWRITE`、`ART-P8-MIGRATION`、`ART-P8-REPLACEMENT`、`ART-P8-DUE-DILIGENCE` 或 `ART-P8-COMPETITOR` |
 
 派生记录必须可由同一输入哈希和规则版本确定性重建。重建得到不同判定时 G6/G7 不能通过；修正规则或 Phase 产物会创建新版本及生命周期关系，不回写旧判定记录。
+
+## 人类决定与派生门禁的边界
+
+人工授权、非运行分支接受、高风险接受和发布批准分别写入 `ART-P0-AUTH`、`ART-P5-STATIC-ACCEPTANCE`、`ART-P7-ACCEPTANCE`、`ART-P8-APPROVAL`。它们是先由有权限的人签署、再按稳定 ID、内容哈希和版本冻结的**不可变输入**；变更决定必须发布新版本，旧版本按产物生命周期保留。
+
+人工决定先于门禁判定。`ART-G0-AUTH`、`ART-G5-VALIDATION`、`ART-G6-AUDIT`、`ART-G7-RELEASE` 只按固定**规则版本**验证对应人工决定的签署权限、适用范围、期限与输入哈希，并引用验证结果。门禁生成器不得生成评审者身份、批准时间、决定或签名，也不得从聊天、作者名或默认配置补齐它们；缺少决定输入时只能给出 `pending` 或 `fail`。
+
+生成的 gate metadata 只能包含**派生且固定的来源元数据**，例如规则版本、输入 ID/哈希、确定性计算结果和生成器版本。评审者身份、批准时间、接受理由、决定与签名属于人类决定产物；门禁记录引用其哈希而不复制成第二份权威。带人工接受的任何门禁都遵守同一依赖方向。
 
 ## 父子汇总与确定性生成
 
@@ -153,6 +172,17 @@ Phase 2 后 G3 保持 `pending`，直到 Phase 4 的共同输入齐全并完成�
 | `withdrawn` | 因无效、越权、敏感泄露或不再发布而撤回，当前没有可自动替代的有效版本；保留原因和影响 |
 
 新产物/摘要用 `replaces` 指向旧对象，旧对象用 `replaced-by` 回指新对象，并记录理由、批准人、生效范围和时间。关系必须成对且目标哈希存在；撤回使用 `withdrawn` 和撤回记录，不伪造替代对象。产品主张的 `superseded` 仍只按[证据与置信度](evidence-and-confidence.md)用于主张取代，两套生命周期不得互换。
+
+## 无环冻结生成顺序
+
+冻结必须按下列顺序单向生成，任何一步变化都从该步开始产生新版本，不能向前写回哈希：
+
+1. `content outputs`：生成证据/主张索引、普通 Phase 产物、目的专用映射、发布说明、不可变人工决定和派生门禁记录；固定每个允许输出的内容哈希。本步明确排除所有阶段摘要、根摘要和分离式冻结证明。
+2. `child/phase summaries`：从叶子到父级生成阶段摘要；每份摘要都排除自身包络和所有证明，只引用已经存在的内容输出和子摘要哈希。
+3. `root summary`：生成根摘要 `ART-P8-ROOT-SUMMARY`，汇总不可变子摘要、门禁和声明输出；根摘要同样不包含自身哈希或任何冻结证明。
+4. `detached freeze manifest/attestation`：最后生成分离式 `ART-P8-FREEZE`，它哈希根摘要和全部声明输出，并记录生成规则、签署或提交锚点。
+
+分离式冻结清单/证明位于每个阶段摘要的输出哈希集合之外；任何摘要也不把 `ART-P8-FREEZE` 当作输入或子项。`ART-P8-FREEZE` 的自身完整性由 Git commit 或外部签名锚定，不把其 Git 对象或签名写回自身，也不得递归包含自身哈希。验证顺序相反：先验证外部锚，再读取分离式清单，然后验证根摘要、子摘要和内容输出。
 
 ## 冻结输入、更正与指标防篡改
 
