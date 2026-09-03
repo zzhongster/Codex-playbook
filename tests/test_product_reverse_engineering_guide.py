@@ -44,6 +44,7 @@ ACCESS_TRACK_DOCUMENTS = {
 }
 STACK_DOCUMENTS = {
     "delphi-desktop": GUIDE_ROOT / "stacks" / "delphi-desktop.md",
+    "web-products": GUIDE_ROOT / "stacks" / "web-products.md",
 }
 LINK_SOURCE_DOCUMENTS = (
     REPO_ROOT / "README.md",
@@ -103,6 +104,26 @@ REQUIRED_DELPHI_SECTIONS = (
     "纵向追踪示例",
     "有序工作流",
 )
+REQUIRED_WEB_SECTIONS = (
+    "路由与产品地图",
+    "渲染模式与水合",
+    "DOM 与可访问性树",
+    "组件、客户端状态、表单与校验",
+    "当前授权会话的网络证据",
+    "API、流式通信与文件传输",
+    "浏览器持久状态",
+    "Service Worker 与离线",
+    "功能开关与实验",
+    "角色、权限、租户与套餐",
+    "遥测与可观测性",
+    "源码、构建产物与前端制品",
+    "响应式、设备、语言与时间状态",
+    "证据边界与主张拆分",
+    "常见盲区",
+    "纵向追踪示例",
+    "有序工作流",
+    "停止与安全边界",
+)
 REQUIRED_ACCESS_TRACK_SECTIONS = (
     "适用条件",
     "可用证据",
@@ -126,6 +147,21 @@ ACCESS_TRACK_STOP_CONTRACT = (
     "- **立即停止：** 一旦发生授权漂移、版本不匹配、不安全写入、敏感信息泄露或"
     "环境未绑定，必须立即停止相关执行；在重新授权且新的 `ART-G0-AUTH` 判定为 "
     "`pass` 前，不得继续或恢复。"
+)
+WEB_SESSION_EVIDENCE_CONTRACT = (
+    "- **会话证据边界：** 只记录当前合法会话中由已执行用户动作实际产生、且会话"
+    "持有人获准检查的请求与响应事实；不得把偶然可见的端点扩展为枚举、重放或"
+    "修改目标，超出已批准实验的请求变更一律停止。"
+)
+WEB_AUTHORIZATION_CLAIM_CONTRACT = (
+    "- **授权主张边界：** 前端隐藏或禁用按钮只支持该角色与状态下的界面观察，"
+    "不是服务端授权证明；只验证授权内角色实际得到的允许或拒绝结果，不猜测或"
+    "探测未授权资源。"
+)
+WEB_BUNDLE_REACHABILITY_CONTRACT = (
+    "- **可达性主张边界：** bundle 中存在代码或功能开关只支持制品结构主张，"
+    "不证明该能力已部署、已启用或能由当前角色到达；可见产品行为必须另有同版本"
+    "运行证据。"
 )
 
 
@@ -505,6 +541,165 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             trace,
         )
 
+    def assert_web_claim_split_contract(self, document):
+        section = self.section_text(document, "## 证据边界与主张拆分")
+        expected_rows = {
+            "可重复可见 Web 行为": (
+                "runtime-confirmed",
+                "只限已测版本、当前合法会话、角色、套餐、租户、配置与状态",
+            ),
+            "前端静态实现": (
+                "statically-supported",
+                "不证明对应代码已部署、已执行或当前角色可达",
+            ),
+            "隐藏服务端实现或数据模型": (
+                "inferred/unsupported",
+                "与可见行为分立；没有获准静态或运行证据时保持未知",
+            ),
+            "前端隐藏或禁用控件": (
+                "observed",
+                "不是服务端授权证明",
+            ),
+            "bundle 代码或功能开关存在": (
+                "observed",
+                "不证明能力已部署、已启用或当前角色可达",
+            ),
+        }
+        observed_rows = {}
+        for line in section.splitlines():
+            match = re.fullmatch(
+                r"\| ([^|]+) \| `([^`]+)` \| [^|]+ \| ([^|]+) \|",
+                line,
+            )
+            if match and match.group(1).strip() in expected_rows:
+                observed_rows[match.group(1).strip()] = (
+                    match.group(2).strip(),
+                    match.group(3).strip(),
+                )
+        self.assertEqual(expected_rows, observed_rows)
+        self.assertIn(WEB_AUTHORIZATION_CLAIM_CONTRACT, section)
+        self.assertIn(WEB_BUNDLE_REACHABILITY_CONTRACT, section)
+
+    def assert_web_vertical_example_contract(self, document):
+        trace = self.section_text(document, "## 纵向追踪示例")
+        nodes = self.section_text(trace, "### 示例节点")
+        node_pattern = re.compile(
+            r"\| `([^`]+)` \| `([^`]+)` \| `([^`]+)` \| ([^|]+) \|"
+        )
+        node_rows = [
+            match.groups()
+            for line in nodes.splitlines()
+            if (match := node_pattern.fullmatch(line))
+        ]
+        self.assertGreaterEqual(len(node_rows), 8)
+
+        stable_id_pattern = re.compile(
+            r"^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+$"
+        )
+        node_ids = set()
+        for node_id, node_kind, status, _boundary in node_rows:
+            self.assertRegex(node_id, stable_id_pattern)
+            self.assertIn(status, CLAIM_STATUSES)
+            node_ids.add(node_id)
+
+        browser_routes = {
+            node_id
+            for node_id, node_kind, _status, _boundary in node_rows
+            if node_kind == "browser-route"
+        }
+        backend_endpoints = {
+            node_id
+            for node_id, node_kind, _status, _boundary in node_rows
+            if node_kind == "backend-endpoint"
+        }
+        self.assertEqual({"product-surface:sample.browser-route"}, browser_routes)
+        self.assertEqual(
+            {"integration:sample.current-session-endpoint"}, backend_endpoints
+        )
+        self.assertTrue(browser_routes.isdisjoint(backend_endpoints))
+
+        links = self.section_text(trace, "### 示例类型化链接")
+        link_pattern = re.compile(
+            r"\| `([^`]+)` \| `([^`]+)` \| `([a-z-]+)` \| `([^`]+)` \| "
+            r"`([^`]+)` \| `(required|optional)` \|"
+        )
+        link_rows = [
+            match.groups()
+            for line in links.splitlines()
+            if (match := link_pattern.fullmatch(line))
+        ]
+        self.assertGreaterEqual(len(link_rows), 8)
+        self.assertIn("optional", {row[5] for row in link_rows})
+        for link_id, source_id, relation, target_id, status, _branch in link_rows:
+            self.assertRegex(link_id, stable_id_pattern)
+            self.assertIn(source_id, node_ids)
+            self.assertIn(target_id, node_ids)
+            self.assertIn(relation, CORE_RELATION_KINDS)
+            self.assertIn(status, CLAIM_STATUSES)
+
+        expected_links = {
+            (
+                "interaction:sample.user-action",
+                "calls",
+                "asset:sample.client-handler",
+                "statically-supported",
+                "required",
+            ),
+            (
+                "asset:sample.client-handler",
+                "reads",
+                "data:sample.client-form-state",
+                "statically-supported",
+                "required",
+            ),
+            (
+                "evidence:sample.client-validation",
+                "validates",
+                "claim:sample.client-validation",
+                "runtime-confirmed",
+                "required",
+            ),
+            (
+                "asset:sample.client-handler",
+                "calls",
+                "integration:sample.current-session-endpoint",
+                "runtime-confirmed",
+                "required",
+            ),
+            (
+                "asset:sample.backend-candidate",
+                "implements",
+                "capability:sample.accept-action",
+                "statically-supported",
+                "optional",
+            ),
+            (
+                "integration:sample.current-session-endpoint",
+                "emits",
+                "integration:sample.async-outcome",
+                "inferred",
+                "optional",
+            ),
+            (
+                "evidence:sample.visible-result",
+                "validates",
+                "claim:sample.visible-result",
+                "runtime-confirmed",
+                "required",
+            ),
+        }
+        observed_links = {
+            (source_id, relation, target_id, status, branch)
+            for _link_id, source_id, relation, target_id, status, branch in link_rows
+        }
+        self.assertTrue(expected_links.issubset(observed_links))
+        self.assertIn(
+            "用户动作 → 客户端状态与校验 → 当前授权会话网络契约 → "
+            "可选后端/异步证据 → 可见结果",
+            trace,
+        )
+        self.assertIn("可选节点缺失时保留缺口", trace)
+
     def assert_deterministic_gate_record_schema(self, document):
         gate_records = self.section_text(document, "## 门禁判定记录与 Phase 产物")
         schema = self.section_text(gate_records, "### 派生门禁记录字段")
@@ -872,6 +1067,249 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             with self.subTest(mutation=name):
                 with self.assertRaises(AssertionError):
                     self.assert_delphi_vertical_example_contract(mutation)
+
+    def test_web_stack_guide_exists_and_is_linked_from_the_guide_readme(self):
+        guide = self.read_guide()
+        path = STACK_DOCUMENTS["web-products"]
+        self.assertTrue(path.is_file(), f"missing Web stack guide: {path}")
+        relative_path = path.relative_to(GUIDE_ROOT).as_posix()
+        self.assertIn(f"]({relative_path})", guide)
+
+    def test_web_stack_guide_has_one_proposed_maturity_and_applicability(self):
+        document = self.read_stack_document("web-products")
+        maturity_declarations = [
+            line.strip()
+            for line in document.splitlines()
+            if line.strip().removeprefix("**").startswith("证据成熟度：")
+        ]
+        self.assertEqual(["**证据成熟度：`proposed`**"], maturity_declarations)
+        self.assert_one_nonblank_applicability_declaration(document)
+        self.assertNotIn("/Users/", document)
+        self.assertNotRegex(document, r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
+
+    def test_web_stack_guide_has_all_substantive_sections(self):
+        document = self.read_stack_document("web-products")
+        for section_name in REQUIRED_WEB_SECTIONS:
+            with self.subTest(section=section_name):
+                section = self.section_text(document, f"## {section_name}")
+                substantive_lines = [
+                    line
+                    for line in section.splitlines()[1:]
+                    if line.strip() and not line.startswith("#")
+                ]
+                self.assertGreaterEqual(
+                    len(substantive_lines), 2, f"thin Web section: {section_name}"
+                )
+
+    def test_web_inventory_covers_role_plan_locale_device_and_data_states(self):
+        document = self.read_stack_document("web-products")
+        product_map = self.section_text(document, "## 路由与产品地图")
+        workflow = self.section_text(document, "## 有序工作流")
+        for dimension in ("角色", "套餐", "语言/地区", "设备/视口", "数据状态"):
+            with self.subTest(dimension=dimension):
+                self.assertIn(dimension, product_map + workflow)
+        for state in ("空", "有数据", "加载中", "错误", "权限拒绝"):
+            with self.subTest(state=state):
+                self.assertIn(state, product_map)
+        self.assertIn("浏览器路由", product_map)
+        self.assertIn("后端端点", product_map)
+        self.assertIn("不同稳定 ID", product_map)
+
+    def test_web_rendering_dom_state_storage_and_environment_surfaces_are_covered(self):
+        document = self.read_stack_document("web-products")
+        required_terms = {
+            "## 渲染模式与水合": ("SSR", "CSR", "静态生成", "hydration", "水合不一致"),
+            "## DOM 与可访问性树": ("DOM", "可访问性树", "焦点", "键盘", "语义"),
+            "## 组件、客户端状态、表单与校验": (
+                "组件",
+                "客户端状态",
+                "表单",
+                "客户端校验",
+                "服务端校验",
+            ),
+            "## 浏览器持久状态": ("Cookie", "Web Storage", "IndexedDB"),
+            "## Service Worker 与离线": ("Service Worker", "缓存", "离线", "更新"),
+            "## 功能开关与实验": ("功能开关", "实验", "分桶", "制品"),
+            "## 响应式、设备、语言与时间状态": (
+                "响应式",
+                "设备",
+                "语言/地区",
+                "时区",
+            ),
+        }
+        for heading, terms in required_terms.items():
+            section = self.section_text(document, heading)
+            for term in terms:
+                with self.subTest(heading=heading, term=term):
+                    self.assertIn(term, section)
+
+    def test_web_current_session_network_contract_covers_protocol_semantics(self):
+        document = self.read_stack_document("web-products")
+        network = self.section_text(document, "## 当前授权会话的网络证据")
+        self.assertIn(WEB_SESSION_EVIDENCE_CONTRACT, network)
+        for field in (
+            "请求身份",
+            "响应事实",
+            "schema",
+            "分页",
+            "错误",
+            "幂等",
+            "异步结果",
+            "脱敏",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, network)
+
+        protocols = self.section_text(document, "## API、流式通信与文件传输")
+        for protocol in (
+            "REST",
+            "GraphQL",
+            "WebSocket",
+            "SSE",
+            "下载",
+            "上传",
+            "流式",
+            "后台",
+        ):
+            with self.subTest(protocol=protocol):
+                self.assertIn(protocol, protocols)
+
+    def test_web_network_boundary_rejects_replay_and_endpoint_enumeration_mutations(self):
+        document = self.read_stack_document("web-products")
+        network = self.section_text(document, "## 当前授权会话的网络证据")
+        self.assertIn(WEB_SESSION_EVIDENCE_CONTRACT, network)
+        mutations = {
+            "allows arbitrary replay": document.replace(
+                WEB_SESSION_EVIDENCE_CONTRACT,
+                "- **会话证据边界：** 可以重放和修改任意请求以补齐证据。",
+            ),
+            "allows endpoint enumeration": document.replace(
+                WEB_SESSION_EVIDENCE_CONTRACT,
+                "- **会话证据边界：** 当前会话暴露的端点可以扩展为枚举清单。",
+            ),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                mutated_network = self.section_text(
+                    mutation, "## 当前授权会话的网络证据"
+                )
+                with self.assertRaises(AssertionError):
+                    self.assertIn(WEB_SESSION_EVIDENCE_CONTRACT, mutated_network)
+
+    def test_web_claim_planes_are_split_and_reject_semantic_overclaiming(self):
+        document = self.read_stack_document("web-products")
+        self.assert_web_claim_split_contract(document)
+        mutations = {
+            "hidden button proves server authorization": document.replace(
+                WEB_AUTHORIZATION_CLAIM_CONTRACT,
+                "- **授权主张边界：** 前端隐藏按钮证明服务端拒绝该角色。",
+            ),
+            "bundle presence proves reachability": document.replace(
+                WEB_BUNDLE_REACHABILITY_CONTRACT,
+                "- **可达性主张边界：** bundle 中存在代码就证明能力已部署且可达。",
+            ),
+            "hidden server model becomes runtime confirmed": document.replace(
+                "| 隐藏服务端实现或数据模型 | `inferred/unsupported` |",
+                "| 隐藏服务端实现或数据模型 | `runtime-confirmed` |",
+            ),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                with self.assertRaises(AssertionError):
+                    self.assert_web_claim_split_contract(mutation)
+
+    def test_web_permissions_flags_telemetry_and_artifacts_preserve_evidence_limits(self):
+        document = self.read_stack_document("web-products")
+        permissions = self.section_text(document, "## 角色、权限、租户与套餐")
+        for boundary in (
+            "角色",
+            "权限",
+            "租户",
+            "套餐",
+            "服务端",
+            "可观察的允许或拒绝结果",
+            "不猜测",
+        ):
+            with self.subTest(boundary=boundary):
+                self.assertIn(boundary, permissions)
+
+        telemetry = self.section_text(document, "## 遥测与可观测性")
+        for surface in ("埋点", "错误上报", "性能", "关联 ID", "第三方"):
+            with self.subTest(surface=surface):
+                self.assertIn(surface, telemetry)
+
+        artifacts = self.section_text(document, "## 源码、构建产物与前端制品")
+        for artifact in ("源码", "构建", "chunk", "source map", "内容哈希"):
+            with self.subTest(artifact=artifact):
+                self.assertIn(artifact, artifacts)
+        self.assertIn("仅在现有、获准范围内", artifacts)
+
+    def test_web_vertical_example_uses_qualified_endpoint_ids_core_relations_and_statuses(self):
+        document = self.read_stack_document("web-products")
+        self.assert_web_vertical_example_contract(document)
+        for forbidden in ("/admin", "tenant_id", "`dispatches-to`", "`transitions-to`"):
+            self.assertNotIn(forbidden, document)
+
+        mutations = {
+            "browser route masquerades as endpoint": document.replace(
+                "| `integration:sample.current-session-endpoint` | `backend-endpoint` |",
+                "| `product-surface:sample.browser-route` | `backend-endpoint` |",
+            ),
+            "unqualified endpoint id": document.replace(
+                "integration:sample.current-session-endpoint",
+                "API-ENDPOINT-1",
+            ),
+            "unregistered relation": document.replace(
+                "| `trace-link:sample.handler-to-endpoint` | "
+                "`asset:sample.client-handler` | `calls` |",
+                "| `trace-link:sample.handler-to-endpoint` | "
+                "`asset:sample.client-handler` | `dispatches-to` |",
+            ),
+            "internal implementation runtime overclaim": document.replace(
+                "`capability:sample.accept-action` | `statically-supported` | `optional` |",
+                "`capability:sample.accept-action` | `runtime-confirmed` | `optional` |",
+            ),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                with self.assertRaises(AssertionError):
+                    self.assert_web_vertical_example_contract(mutation)
+
+    def test_web_blind_spots_and_stop_boundaries_are_explicit_and_safe(self):
+        document = self.read_stack_document("web-products")
+        blind_spots = self.section_text(document, "## 常见盲区")
+        for blind_spot in (
+            "客户端可见不等于服务端实现",
+            "缓存与旧 chunk",
+            "水合与竞态",
+            "后台与流式终态",
+            "多角色、租户与套餐",
+            "响应式、语言与时区",
+        ):
+            with self.subTest(blind_spot=blind_spot):
+                self.assertRegex(
+                    blind_spots, rf"(?m)^\| {re.escape(blind_spot)} \|"
+                )
+
+        stop = self.section_text(document, "## 停止与安全边界")
+        prohibited_actions = (
+            "认证绕过",
+            "隐藏租户 ID",
+            "凭据提取",
+            "规避付费功能",
+            "任意端点枚举",
+            "速率滥用",
+            "授权范围外发现 source map",
+            "超出已批准实验重放或修改请求",
+        )
+        for prohibited in prohibited_actions:
+            with self.subTest(prohibited=prohibited):
+                self.assertRegex(
+                    stop,
+                    rf"(?m)^- 禁止.*{re.escape(prohibited)}.*",
+                )
+        self.assertIn("立即停止", stop)
+        self.assertIn("重新授权", stop)
 
     def test_access_tracks_have_the_exact_substantive_section_contract(self):
         maturity_pattern = re.compile(r"^\*\*证据成熟度：`([^`]+)`\*\*$")
