@@ -42,12 +42,16 @@ ACCESS_TRACK_DOCUMENTS = {
     "gray-box": GUIDE_ROOT / "access-tracks" / "gray-box.md",
     "white-box": GUIDE_ROOT / "access-tracks" / "white-box.md",
 }
+STACK_DOCUMENTS = {
+    "delphi-desktop": GUIDE_ROOT / "stacks" / "delphi-desktop.md",
+}
 LINK_SOURCE_DOCUMENTS = (
     REPO_ROOT / "README.md",
     REPO_ROOT / "CONTRIBUTING.md",
     GUIDE_ROOT / "README.md",
     *FOUNDATION_DOCUMENTS.values(),
     *ACCESS_TRACK_DOCUMENTS.values(),
+    *STACK_DOCUMENTS.values(),
 )
 ALLOWED_MATURITY_LABELS = (
     "cross-project-validated",
@@ -59,6 +63,19 @@ TASK_4_DOCUMENT_NAMES = (
     "runtime-experiments",
     "coverage-quality-and-freeze",
     "human-agent-collaboration",
+)
+REQUIRED_DELPHI_SECTIONS = (
+    "项目与运行身份",
+    "DPR、PAS 与 DFM 资产",
+    "VCL 继承、Action 与事件",
+    "DataModule、数据库与中间件",
+    "报表、打印与导出",
+    "动态与配置驱动调用",
+    "仅编译产物与兼容性边界",
+    "遗留运行实验室",
+    "常见盲区与停止规则",
+    "纵向追踪示例",
+    "有序工作流",
 )
 REQUIRED_ACCESS_TRACK_SECTIONS = (
     "适用条件",
@@ -103,6 +120,11 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
     def read_access_track(self, name):
         path = ACCESS_TRACK_DOCUMENTS[name]
         self.assertTrue(path.is_file(), f"missing access track: {path}")
+        return path.read_text(encoding="utf-8")
+
+    def read_stack_document(self, name):
+        path = STACK_DOCUMENTS[name]
+        self.assertTrue(path.is_file(), f"missing stack document: {path}")
         return path.read_text(encoding="utf-8")
 
     def section_text(self, document, heading):
@@ -209,6 +231,49 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIn("Git commit 或外部签名", freeze_order)
         self.assertIn("不得递归包含自身哈希", freeze_order)
 
+    def assert_delphi_evidence_planes_remain_distinct(self, document):
+        evidence_section = self.section_text(document, "### 证据面分离矩阵")
+        expected_rows = {
+            "DFM 静态属性": (
+                "statically-supported",
+                "",
+                "不证明控件运行时可见、可用或处理器被触发",
+            ),
+            "通用组件能力": (
+                "inferred",
+                "",
+                "不证明某业务窗体启用了该能力",
+            ),
+            "数据库聚合探针": (
+                "runtime-confirmed",
+                "（仅探针主张）",
+                "不证明按钮、筛选、穿透、状态迁移、报表或打印行为",
+            ),
+            "已观察 UI 行为": (
+                "runtime-confirmed",
+                "（仅已回放场景）",
+                "不外推到未覆盖角色、版本、配置或路径",
+            ),
+        }
+        observed_rows = {}
+        for line in evidence_section.splitlines():
+            match = re.fullmatch(
+                r"\| ([^|]+) \| [^|]+ \| `([^`]+)`([^|]*) \| ([^|]+) \|",
+                line,
+            )
+            if match and match.group(1).strip() in expected_rows:
+                observed_rows[match.group(1).strip()] = (
+                    match.group(2).strip(),
+                    match.group(3).strip(),
+                    match.group(4).strip(),
+                )
+        self.assertEqual(expected_rows, observed_rows)
+        self.assertIn(
+            "数据库聚合探针通过不得把任何 UI、报表或打印主张升级为 "
+            "`runtime-confirmed`。",
+            evidence_section,
+        )
+
     def assert_deterministic_gate_record_schema(self, document):
         gate_records = self.section_text(document, "## 门禁判定记录与 Phase 产物")
         schema = self.section_text(gate_records, "### 派生门禁记录字段")
@@ -261,6 +326,196 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 self.assertTrue(path.is_file(), f"missing access track: {path}")
                 relative_path = path.relative_to(GUIDE_ROOT).as_posix()
                 self.assertIn(f"]({relative_path})", guide)
+
+    def test_delphi_stack_guide_exists_and_is_linked_from_the_guide_readme(self):
+        guide = self.read_guide()
+        path = STACK_DOCUMENTS["delphi-desktop"]
+        self.assertTrue(path.is_file(), f"missing Delphi stack guide: {path}")
+        relative_path = path.relative_to(GUIDE_ROOT).as_posix()
+        self.assertIn(f"]({relative_path})", guide)
+
+    def test_delphi_stack_guide_has_one_canonical_maturity_and_applicability(self):
+        document = self.read_stack_document("delphi-desktop")
+        maturity_declarations = [
+            line.strip()
+            for line in document.splitlines()
+            if line.strip().removeprefix("**").startswith("证据成熟度：")
+        ]
+        self.assertEqual(
+            ["**证据成熟度：`project-validated`**"], maturity_declarations
+        )
+        self.assert_one_nonblank_applicability_declaration(document)
+        self.assertEqual(1, document.count("**段落依据：`project-validated`**"))
+        self.assertEqual(1, document.count("**推广状态：`proposed`**"))
+        self.assertNotIn("/Users/", document)
+        self.assertNotRegex(document, r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
+
+    def test_delphi_stack_guide_has_all_substantive_sections(self):
+        document = self.read_stack_document("delphi-desktop")
+        for section_name in REQUIRED_DELPHI_SECTIONS:
+            with self.subTest(section=section_name):
+                section = self.section_text(document, f"## {section_name}")
+                substantive_lines = [
+                    line
+                    for line in section.splitlines()[1:]
+                    if line.strip() and not line.startswith("#")
+                ]
+                self.assertGreaterEqual(
+                    len(substantive_lines), 3, f"thin Delphi section: {section_name}"
+                )
+
+    def test_delphi_workflow_is_ordered_and_preserves_original_resources(self):
+        document = self.read_stack_document("delphi-desktop")
+        workflow = self.section_text(document, "## 有序工作流")
+        steps = [
+            line for line in workflow.splitlines() if re.match(r"^\d+\. ", line)
+        ]
+        self.assertEqual(7, len(steps))
+        expected_terms = (
+            (
+                "可执行文件、安装包、DPR 项目、源码变体、数据库与组件版本",
+                "SHA-256",
+                "运行时身份",
+            ),
+            (
+                "DPR",
+                "窗体",
+                "DataModule",
+                "Frame",
+                "Package",
+                "资源",
+                "第三方",
+                "生成代码",
+            ),
+            ("PAS", "声明", "实现", "文本 DFM", "二进制 DFM", "不覆盖原件"),
+            (
+                "继承",
+                "控件",
+                "事件",
+                "Action",
+                "菜单",
+                "快捷键",
+                "动态创建",
+            ),
+            (
+                "DataModule",
+                "TClientDataSet",
+                "Provider",
+                "ADO",
+                "BDE",
+                "MIDAS",
+                "DCOM",
+                "Socket",
+                "存储过程",
+            ),
+            ("动态数据库调用", "完全限定", "证据", "不得伪造精确调用边"),
+            ("32 位", "ART-G0-AUTH", "pass", "一次性数据库副本", "四类证据面"),
+        )
+        for step, terms in zip(steps, expected_terms):
+            for term in terms:
+                with self.subTest(step=step[:2], term=term):
+                    self.assertIn(term, step)
+
+    def test_delphi_evidence_planes_are_distinct_and_reject_ui_overclaiming(self):
+        document = self.read_stack_document("delphi-desktop")
+        self.assert_delphi_evidence_planes_remain_distinct(document)
+
+        mutated = document.replace(
+            "数据库聚合探针通过不得把任何 UI、报表或打印主张升级为 "
+            "`runtime-confirmed`。",
+            "数据库聚合探针通过可以把 UI、报表和打印主张升级为 "
+            "`runtime-confirmed`。",
+        )
+        with self.assertRaises(AssertionError):
+            self.assert_delphi_evidence_planes_remain_distinct(mutated)
+
+    def test_delphi_dynamic_calls_require_qualified_seed_evidence(self):
+        document = self.read_stack_document("delphi-desktop")
+        dynamic_calls = self.section_text(document, "## 动态与配置驱动调用")
+        for contract in (
+            "字符串 SQL 或过程名",
+            "数据库驱动菜单",
+            "反射",
+            "动态加载",
+            "调用点稳定 ID",
+            "数据库类型与完全限定对象名",
+            "关系类型",
+            "证据位置与 SHA-256",
+            "状态、置信度与验证方法",
+            "候选 seed 边不等于源码中的精确直接调用边",
+            "零匹配、多匹配或版本不一致必须停止自动连边",
+            "不得伪造精确调用边",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, dynamic_calls)
+
+    def test_delphi_compiled_only_evidence_has_explicit_claim_ceiling(self):
+        document = self.read_stack_document("delphi-desktop")
+        compiled = self.section_text(document, "## 仅编译产物与兼容性边界")
+        for artifact in ("DCU", "BPL", "DLL", "EXE", "资源"):
+            with self.subTest(artifact=artifact):
+                self.assertIn(f"`{artifact}`", compiled)
+        for limit in (
+            "反编译器与元数据工具版本",
+            "Delphi 编译器版本",
+            "组件版本",
+            "编译选项",
+            "不等价于原始源码",
+            "不能证明业务意图",
+            "兼容性矩阵",
+        ):
+            with self.subTest(limit=limit):
+                self.assertIn(limit, compiled)
+
+    def test_delphi_blind_spots_and_lab_stop_rules_are_explicit(self):
+        document = self.read_stack_document("delphi-desktop")
+        blind_spots = self.section_text(document, "## 常见盲区与停止规则")
+        for blind_spot in (
+            "二进制 DFM",
+            "反射/动态加载",
+            "字符串 SQL/过程名",
+            "版本分叉",
+            "不可达/死代码",
+            "设计期与运行时状态",
+            "32 位会话约束",
+        ):
+            with self.subTest(blind_spot=blind_spot):
+                self.assertRegex(blind_spots, rf"(?m)^\| {re.escape(blind_spot)} \|")
+        for stop_rule in (
+            "授权、身份、版本、数据库目标或隔离状态漂移时立即停止",
+            "二进制 DFM 无法无损转换时保留原件并把对应字段标为 `unsupported`",
+            "动态目标不能唯一解析时停止自动连边",
+            "不能启动安全的 32 位会话时转入受治理的静态分支",
+        ):
+            self.assertIn(stop_rule, blind_spots)
+
+    def test_delphi_vertical_trace_keeps_static_runtime_and_generalization_separate(self):
+        document = self.read_stack_document("delphi-desktop")
+        trace = self.section_text(document, "## 纵向追踪示例")
+        chain = (
+            "动态菜单配置 → 表单类/动态创建 → Action → OnExecute/OnClick → "
+            "业务例程 → TdmClient/TClientDataSet → 中间件接口/Provider → "
+            "存储过程 → 表/字段 → UI 状态迁移"
+        )
+        self.assertIn(chain, trace)
+        for marker in (
+            "SAN-MENU-01",
+            "SAN-FORM-01",
+            "SAN-ACTION-01",
+            "SAN-EVENT-01",
+            "SAN-ROUTINE-01",
+            "SAN-DM-01",
+            "SAN-MW-01",
+            "SAN-PROC-01",
+            "SAN-FIELD-01",
+            "SAN-RUNTIME-01",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, trace)
+        self.assertIn("示例名称均为脱敏占位符", trace)
+        self.assertIn("静态链条不得代替最后一跳的运行时状态迁移", trace)
+        self.assertIn("一次性数据库副本中实际回放", trace)
+        self.assertIn("否则保持 `unsupported`", trace)
 
     def test_access_tracks_have_the_exact_substantive_section_contract(self):
         maturity_pattern = re.compile(r"^\*\*证据成熟度：`([^`]+)`\*\*$")
