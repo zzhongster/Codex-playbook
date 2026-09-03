@@ -38,6 +38,12 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIn("## 给项目负责人", guide_lines)
         self.assertIn("## 给执行团队与 AI Agent", guide_lines)
 
+    def test_guide_documents_exact_validation_command(self):
+        self.assertIn(
+            "python3 tools/validate_product_reverse_engineering_guide.py",
+            self.read_guide(),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
