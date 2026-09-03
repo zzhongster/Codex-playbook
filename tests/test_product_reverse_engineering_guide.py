@@ -618,10 +618,15 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             r"^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+$"
         )
         node_ids = set()
+        declared_evidence_ids = []
         for node_id, node_kind, status, _boundary in node_rows:
             self.assertRegex(node_id, stable_id_pattern)
             self.assertIn(status, CLAIM_STATUSES)
             node_ids.add(node_id)
+            if node_id.startswith("evidence:"):
+                self.assertTrue(node_kind.endswith("-evidence"))
+                declared_evidence_ids.append(node_id)
+        self.assertTrue(declared_evidence_ids)
 
         browser_routes = {
             node_id
@@ -638,6 +643,24 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             {"integration:sample.current-session-endpoint"}, backend_endpoints
         )
         self.assertTrue(browser_routes.isdisjoint(backend_endpoints))
+
+        context_section = self.section_text(trace, "### 示例版本/上下文")
+        context_pattern = re.compile(r"\| `([^`]+)` \| [^|]+ \|")
+        context_table_rows = [
+            line
+            for line in context_section.splitlines()
+            if line.startswith("| `context:")
+        ]
+        declared_context_ids = [
+            match.group(1)
+            for line in context_section.splitlines()
+            if (match := context_pattern.fullmatch(line))
+        ]
+        self.assertEqual(len(context_table_rows), len(declared_context_ids))
+        self.assertTrue(declared_context_ids)
+        for context_id in declared_context_ids:
+            self.assertRegex(context_id, stable_id_pattern)
+            self.assertTrue(context_id.startswith("context:"))
 
         links = self.section_text(trace, "### 示例类型化链接")
         link_pattern = re.compile(
@@ -679,9 +702,19 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             for evidence_id in evidence_ids:
                 self.assertRegex(evidence_id, stable_id_pattern)
                 self.assertTrue(evidence_id.startswith("evidence:"))
+                self.assertEqual(
+                    1,
+                    declared_evidence_ids.count(evidence_id),
+                    f"evidence reference must resolve exactly once: {evidence_id}",
+                )
             for context_id in context_ids:
                 self.assertRegex(context_id, stable_id_pattern)
                 self.assertTrue(context_id.startswith("context:"))
+                self.assertEqual(
+                    1,
+                    declared_context_ids.count(context_id),
+                    f"context reference must resolve exactly once: {context_id}",
+                )
 
         expected_links = {
             (
@@ -1434,6 +1467,20 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "`product-surface:sample.browser-route` | `exposes` | "
                 "`capability:sample.accept-action` | `observed` | `required` | "
                 "`evidence:sample.route-observation` | `VERSION-1` |",
+            ),
+            "well-formed undeclared evidence reference": document.replace(
+                "`evidence:sample.route-observation` | "
+                "`context:sample.session-version` |",
+                "`evidence:sample.missing-evidence` | "
+                "`context:sample.session-version` |",
+                1,
+            ),
+            "well-formed undeclared context reference": document.replace(
+                "`evidence:sample.route-observation` | "
+                "`context:sample.session-version` |",
+                "`evidence:sample.route-observation` | "
+                "`context:sample.missing-context` |",
+                1,
             ),
         }
         for name, mutation in mutations.items():
