@@ -3259,6 +3259,44 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         ]
         self.assertTrue(list(validator.iter_errors(tied_but_points_to_second)))
 
+        out_of_order_failures = copy.deepcopy(experiment)
+        earlier_failure = out_of_order_failures["result"]["run_results"][0]
+        earlier_failure["ended_at"] = "2026-01-15T09:04:00Z"
+        later_failure = copy.deepcopy(earlier_failure)
+        later_failure.update(
+            {
+                "run_id": "run:sample.later-failure",
+                "started_at": "2026-01-15T09:02:00Z",
+                "ended_at": "2026-01-15T09:03:00Z",
+                "result": "mixed",
+            }
+        )
+        out_of_order_failures["result"]["run_results"] = [
+            later_failure,
+            earlier_failure,
+        ]
+        self.assertEqual(
+            [], list(validator.iter_errors(out_of_order_failures))
+        )
+
+        overlapping_retry_before_failure_in_array = copy.deepcopy(
+            out_of_order_failures
+        )
+        overlapping_retry = overlapping_retry_before_failure_in_array[
+            "result"
+        ]["run_results"][0]
+        overlapping_retry["result"] = "passed"
+        overlapping_retry_before_failure_in_array["result"]["first_failure"][
+            "captured_at"
+        ] = "2026-01-15T09:02:30Z"
+        self.assertTrue(
+            list(
+                validator.iter_errors(
+                    overlapping_retry_before_failure_in_array
+                )
+            )
+        )
+
         malformed_timestamp = copy.deepcopy(experiment)
         malformed_timestamp["result"]["first_failure"]["captured_at"] = (
             "not-a-timestamp"
@@ -3393,6 +3431,30 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertTrue(
             validate_bundle([claim], [evidence], [malformed_endpoint], known_ids)
         )
+
+    def test_bundle_compatibility_entry_loads_from_outside_the_repository(self):
+        loader = (
+            "import runpy\n"
+            f"namespace = runpy.run_path({str(BUNDLE_VALIDATOR_PATH)!r})\n"
+            "assert callable(namespace['validate_claim_evidence_trace_bundle'])\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runpy_result = subprocess.run(
+                [sys.executable, "-c", loader],
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            script_result = subprocess.run(
+                [sys.executable, str(BUNDLE_VALIDATOR_PATH)],
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(0, runpy_result.returncode, runpy_result.stderr)
+        self.assertEqual(0, script_result.returncode, script_result.stderr)
 
     def test_decision_chosen_outcome_must_resolve_to_a_declared_alternative(self):
         self.require_all_schemas_and_examples()
@@ -7388,10 +7450,9 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         for copied_implementation in copied_implementations:
             self.assertNotIn(copied_implementation, test_source)
         bundle_source = BUNDLE_VALIDATOR_PATH.read_text(encoding="utf-8")
-        self.assertIn(
-            "from tools.product_reverse_engineering_validation import",
-            bundle_source,
-        )
+        self.assertIn("Path(__file__).resolve().with_name", bundle_source)
+        self.assertIn("product_reverse_engineering_validation.py", bundle_source)
+        self.assertIn("spec_from_file_location", bundle_source)
         self.assertNotIn("def _record_index(", bundle_source)
 
     def test_record_cli_validates_inferred_explicit_and_semantic_records(self):

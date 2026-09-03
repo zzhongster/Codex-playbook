@@ -357,10 +357,10 @@ def experiment_artifacts_are_bound(validator, enabled, instance, schema):
                         key=lambda item: (item[2], item[0]),
                     )
                     (
-                        earliest_sequence,
+                        _earliest_sequence,
                         earliest_run_id,
                         earliest_start,
-                        earliest_end,
+                        _earliest_end,
                     ) = earliest_failure
                     if failure_run_id != earliest_run_id:
                         yield ValidationError(
@@ -373,20 +373,34 @@ def experiment_artifacts_are_bound(validator, enabled, instance, schema):
                             "first_failure.captured_at must be a timezone-aware timestamp"
                         )
                     if captured_at is not None:
-                        if not earliest_start <= captured_at <= earliest_end:
+                        referenced_window = next(
+                            (
+                                (run_start, run_end)
+                                for (
+                                    _sequence,
+                                    run_id,
+                                    run_start,
+                                    run_end,
+                                ) in parsed_failed_runs
+                                if run_id == failure_run_id
+                            ),
+                            None,
+                        )
+                        if referenced_window is not None and not (
+                            referenced_window[0] <= captured_at <= referenced_window[1]
+                        ):
                             yield ValidationError(
-                                "first_failure.captured_at must fall within the earliest failed run"
+                                "first_failure.captured_at must fall within its referenced run"
                             )
                         subsequent_starts = [
                             run_start
                             for (
-                                sequence,
+                                _sequence,
                                 _run_id,
                                 run_start,
                                 _run_end,
                             ) in parsed_runs
-                            if sequence > earliest_sequence
-                            and run_start > earliest_start
+                            if run_start > earliest_start
                         ]
                         if any(
                             captured_at >= retry_start
