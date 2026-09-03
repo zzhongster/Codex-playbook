@@ -424,25 +424,17 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 yield ValidationError(
                     "protocol record_id must equal its artifact_id"
                 )
-            method_definitions = protocol.get("method_definitions")
-            if isinstance(method_definitions, list):
-                method_ids = [
-                    method.get("method_id")
-                    for method in method_definitions
-                    if isinstance(method, dict)
-                ]
-                if len(method_ids) != len(set(method_ids)):
+            claim_references = protocol.get("claim_references")
+            target_claim_references = protocol.get("target_claim_references")
+            if isinstance(claim_references, list) and isinstance(
+                target_claim_references, list
+            ):
+                if not set(target_claim_references).issubset(
+                    set(claim_references)
+                ):
                     yield ValidationError(
-                        "protocol method definition IDs must be unique"
+                        "target claims must be declared by the protocol"
                     )
-                for entry in protocol.get("evidence_method_entries", []):
-                    if (
-                        isinstance(entry, dict)
-                        and entry.get("method_id") not in set(method_ids)
-                    ):
-                        yield ValidationError(
-                            "evidence method entries must resolve to a declared method"
-                        )
             for artifact_name in ("result", "effects"):
                 artifact = instance.get(artifact_name)
                 if not isinstance(artifact, dict):
@@ -477,7 +469,48 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 artifact = instance.get(artifact_name)
                 if not isinstance(artifact, dict):
                     continue
-                declared = set(artifact.get("evidence_references", []))
+                evidence_references = artifact.get("evidence_references")
+                method_definitions = artifact.get("method_definitions")
+                evidence_method_entries = artifact.get(
+                    "evidence_method_entries"
+                )
+                if (
+                    isinstance(evidence_references, list)
+                    and isinstance(method_definitions, list)
+                    and isinstance(evidence_method_entries, list)
+                ):
+                    method_ids = [
+                        method.get("method_id")
+                        for method in method_definitions
+                        if isinstance(method, dict)
+                    ]
+                    mapped_evidence_ids = [
+                        entry.get("evidence_id")
+                        for entry in evidence_method_entries
+                        if isinstance(entry, dict)
+                    ]
+                    mapped_method_ids = {
+                        entry.get("method_id")
+                        for entry in evidence_method_entries
+                        if isinstance(entry, dict)
+                    }
+                    if len(method_ids) != len(set(method_ids)):
+                        yield ValidationError(
+                            f"{artifact_name} method IDs must be unique"
+                        )
+                    if (
+                        set(evidence_references) != set(mapped_evidence_ids)
+                        or len(mapped_evidence_ids)
+                        != len(set(mapped_evidence_ids))
+                    ):
+                        yield ValidationError(
+                            f"{artifact_name} evidence must map exactly once"
+                        )
+                    if set(method_ids) != mapped_method_ids:
+                        yield ValidationError(
+                            f"{artifact_name} mapped methods must equal declared methods"
+                        )
+                declared = set(evidence_references or [])
                 nested_payload = {
                     key: value
                     for key, value in artifact.items()
@@ -540,17 +573,6 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                         "first_failure.run_id must resolve to a declared run"
                     )
 
-                effects = instance.get("effects")
-                cleanup = effects.get("cleanup") if isinstance(effects, dict) else None
-                if (
-                    any(run.get("result") == "passed" for run in runs)
-                    and isinstance(cleanup, dict)
-                    and cleanup.get("result") == "failed"
-                ):
-                    yield ValidationError(
-                        "a passed experiment result cannot have failed cleanup"
-                    )
-
         def coverage_gates_are_consistent(validator, enabled, instance, schema):
             if not enabled or not isinstance(instance, dict):
                 return
@@ -595,6 +617,10 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 yield ValidationError(
                     "chosen_outcome must resolve to a declared alternative_id"
                 )
+            if instance.get("supersedes_decision_id") == instance.get(
+                "record_id"
+            ):
+                yield ValidationError("a decision must not supersede itself")
 
         contract_validator = validators.extend(
             Draft202012Validator,
@@ -1059,6 +1085,8 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "product_version",
                 "scope_or_module",
                 "evidence_references",
+                "method_definitions",
+                "evidence_method_entries",
                 "protocol_reference",
                 "run_results",
                 "independent_reproduction_results",
@@ -1066,6 +1094,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             },
             set(metadata),
         )
+        self.assert_experiment_evidence_method_metadata(metadata)
         top_level_evidence_ids = set(metadata["evidence_references"])
         run_ids = set()
         for list_key in ("run_results", "independent_reproduction_results"):
@@ -1155,6 +1184,8 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 "product_version",
                 "scope_or_module",
                 "evidence_references",
+                "method_definitions",
+                "evidence_method_entries",
                 "protocol_reference",
                 "side_effect_records",
                 "cleanup",
@@ -1162,6 +1193,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             },
             set(metadata),
         )
+        self.assert_experiment_evidence_method_metadata(metadata)
         top_level_evidence_ids = set(metadata["evidence_references"])
         self.assertIsInstance(metadata["side_effect_records"], list)
         self.assertTrue(metadata["side_effect_records"])
@@ -1236,6 +1268,35 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             )
         )
 
+    def assert_experiment_evidence_method_metadata(self, metadata):
+        methods = metadata["method_definitions"]
+        mappings = metadata["evidence_method_entries"]
+        self.assertIsInstance(methods, list)
+        self.assertIsInstance(mappings, list)
+        evidence_ids = set(metadata["evidence_references"])
+        if not evidence_ids:
+            self.assertEqual([], methods)
+            self.assertEqual([], mappings)
+            return
+        self.assertTrue(methods)
+        self.assertTrue(mappings)
+        method_ids = []
+        for method in methods:
+            self.assertEqual({"method_id", "method_maturity"}, set(method))
+            self.assertTrue(method["method_id"].startswith("method:"))
+            self.assertIn(method["method_maturity"], ALLOWED_MATURITY_LABELS)
+            method_ids.append(method["method_id"])
+        self.assertEqual(len(method_ids), len(set(method_ids)))
+        mapped_evidence_ids = []
+        mapped_method_ids = set()
+        for mapping in mappings:
+            self.assertEqual({"evidence_id", "method_id"}, set(mapping))
+            mapped_evidence_ids.append(mapping["evidence_id"])
+            mapped_method_ids.add(mapping["method_id"])
+        self.assertEqual(evidence_ids, set(mapped_evidence_ids))
+        self.assertEqual(len(evidence_ids), len(mapped_evidence_ids))
+        self.assertEqual(set(method_ids), mapped_method_ids)
+
     def assert_experiment_artifact_packages(self, artifacts):
         self.assertEqual(3, len(artifacts))
         by_type = {artifact.get("artifact_type"): artifact for artifact in artifacts}
@@ -1253,6 +1314,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertEqual("frozen", protocol["status"])
         self.assertEqual(protocol["record_id"], protocol["artifact_id"])
         self.assert_common_record_metadata(protocol)
+        self.assert_experiment_evidence_method_metadata(protocol)
         self.assert_composite_template_metadata(protocol)
         self.assert_experiment_protocol_metadata(protocol)
         self.assert_experiment_result_metadata(result)
@@ -2927,6 +2989,9 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             )
 
         result = fixture["result"]
+        self.assertTrue(
+            {"method_definitions", "evidence_method_entries"}.issubset(result)
+        )
         self.assertTrue(result["run_results"])
         self.assertTrue(result["independent_reproduction_results"])
         expected_run_fields = {
@@ -2961,6 +3026,9 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         )
 
         effects = fixture["effects"]
+        self.assertTrue(
+            {"method_definitions", "evidence_method_entries"}.issubset(effects)
+        )
         self.assertTrue(effects["side_effect_records"])
         self.assertEqual(
             {"steps", "result", "disposition_proof_references"},
@@ -2971,7 +3039,149 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             set(effects["residual_checks"]),
         )
 
-    def test_experiment_schema_rejects_artifact_run_and_cleanup_conflicts(self):
+    def test_experiment_artifacts_require_closed_local_evidence_method_maps(self):
+        self.require_all_schemas_and_examples()
+        experiment = self.read_json_file(
+            SCHEMA_EXAMPLES["experiment"]["valid"]
+        )
+        validator = self.schema_validator("experiment")
+        for artifact_name in ("protocol", "result", "effects"):
+            artifact = experiment[artifact_name]
+            with self.subTest(artifact=artifact_name):
+                self.assertTrue(
+                    {
+                        "evidence_references",
+                        "method_definitions",
+                        "evidence_method_entries",
+                    }.issubset(artifact)
+                )
+
+        unmapped_top_level_evidence = copy.deepcopy(experiment)
+        unmapped_top_level_evidence["result"]["evidence_references"].append(
+            "evidence:sample.unmapped-result"
+        )
+        self.assertTrue(
+            list(validator.iter_errors(unmapped_top_level_evidence))
+        )
+
+        mapping_to_undeclared_evidence = copy.deepcopy(experiment)
+        mapping_to_undeclared_evidence["effects"]["evidence_method_entries"][0][
+            "evidence_id"
+        ] = "evidence:sample.not-declared"
+        self.assertTrue(
+            list(validator.iter_errors(mapping_to_undeclared_evidence))
+        )
+
+        mapping_to_undeclared_method = copy.deepcopy(experiment)
+        mapping_to_undeclared_method["result"]["evidence_method_entries"][0][
+            "method_id"
+        ] = "method:sample.not-declared"
+        self.assertTrue(
+            list(validator.iter_errors(mapping_to_undeclared_method))
+        )
+
+        multiply_mapped_evidence = copy.deepcopy(experiment)
+        multiply_mapped_evidence["result"]["method_definitions"].append(
+            {
+                "method_id": "method:sample.second-result-method",
+                "method_maturity": "proposed",
+            }
+        )
+        multiply_mapped_evidence["result"]["evidence_method_entries"].append(
+            {
+                "evidence_id": "evidence:sample.order-response",
+                "method_id": "method:sample.second-result-method",
+            }
+        )
+        self.assertTrue(list(validator.iter_errors(multiply_mapped_evidence)))
+
+        orphan_method = copy.deepcopy(experiment)
+        orphan_method["protocol"]["method_definitions"].append(
+            {
+                "method_id": "method:sample.not-used",
+                "method_maturity": "proposed",
+            }
+        )
+        self.assertTrue(list(validator.iter_errors(orphan_method)))
+
+    def test_experiment_conditionally_requires_evidence_for_positive_results(self):
+        self.require_all_schemas_and_examples()
+        experiment = self.read_json_file(
+            SCHEMA_EXAMPLES["experiment"]["valid"]
+        )
+        validator = self.schema_validator("experiment")
+
+        passed_without_observations = copy.deepcopy(experiment)
+        passed_without_observations["result"]["run_results"][0][
+            "actual_observations"
+        ] = []
+        self.assertTrue(list(validator.iter_errors(passed_without_observations)))
+
+        passed_without_evidence = copy.deepcopy(experiment)
+        passed_without_evidence["result"]["run_results"][0][
+            "evidence_references"
+        ] = []
+        self.assertTrue(list(validator.iter_errors(passed_without_evidence)))
+
+        occurred_without_disposition_proof = copy.deepcopy(experiment)
+        occurred_without_disposition_proof["effects"]["side_effect_records"][0][
+            "disposition_proof_references"
+        ] = []
+        self.assertTrue(
+            list(validator.iter_errors(occurred_without_disposition_proof))
+        )
+
+        passed_cleanup_without_proof = copy.deepcopy(experiment)
+        passed_cleanup_without_proof["effects"]["cleanup"][
+            "disposition_proof_references"
+        ] = []
+        self.assertTrue(list(validator.iter_errors(passed_cleanup_without_proof)))
+
+        passed_residual_check_without_evidence = copy.deepcopy(experiment)
+        passed_residual_check_without_evidence["effects"]["residual_checks"][
+            "evidence_references"
+        ] = []
+        self.assertTrue(
+            list(validator.iter_errors(passed_residual_check_without_evidence))
+        )
+
+    def test_experiment_draft_artifacts_allow_empty_evidence_method_sets(self):
+        self.require_all_schemas_and_examples()
+        experiment = self.read_json_file(
+            SCHEMA_EXAMPLES["experiment"]["valid"]
+        )
+        validator = self.schema_validator("experiment")
+
+        empty_result_evidence = copy.deepcopy(experiment)
+        result = empty_result_evidence["result"]
+        result["evidence_references"] = []
+        result["method_definitions"] = []
+        result["evidence_method_entries"] = []
+        for run in (
+            *result["run_results"],
+            *result["independent_reproduction_results"],
+        ):
+            run["result"] = "not-run"
+            run["actual_observations"] = []
+            run["evidence_references"] = []
+        self.assertEqual([], list(validator.iter_errors(empty_result_evidence)))
+
+        empty_effects_evidence = copy.deepcopy(experiment)
+        effects = empty_effects_evidence["effects"]
+        effects["evidence_references"] = []
+        effects["method_definitions"] = []
+        effects["evidence_method_entries"] = []
+        effects["side_effect_records"][0]["occurred"] = False
+        effects["side_effect_records"][0][
+            "disposition_proof_references"
+        ] = []
+        effects["cleanup"]["result"] = "not-run"
+        effects["cleanup"]["disposition_proof_references"] = []
+        effects["residual_checks"]["result"] = "not-run"
+        effects["residual_checks"]["evidence_references"] = []
+        self.assertEqual([], list(validator.iter_errors(empty_effects_evidence)))
+
+    def test_experiment_schema_enforces_artifact_run_and_claim_contracts(self):
         self.require_all_schemas_and_examples()
         experiment = self.read_json_file(
             SCHEMA_EXAMPLES["experiment"]["valid"]
@@ -3014,6 +3224,12 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         ] = "method:sample.not-declared"
         self.assertTrue(list(validator.iter_errors(unresolved_method_mapping)))
 
+        undeclared_target_claim = copy.deepcopy(experiment)
+        undeclared_target_claim["protocol"]["target_claim_references"].append(
+            "claim:sample.not-declared"
+        )
+        self.assertTrue(list(validator.iter_errors(undeclared_target_claim)))
+
         unknown_failure_run = copy.deepcopy(experiment)
         unknown_failure_run["result"]["first_failure"].update(
             {
@@ -3027,10 +3243,6 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             }
         )
         self.assertTrue(list(validator.iter_errors(unknown_failure_run)))
-
-        passed_with_failed_cleanup = copy.deepcopy(experiment)
-        passed_with_failed_cleanup["effects"]["cleanup"]["result"] = "failed"
-        self.assertTrue(list(validator.iter_errors(passed_with_failed_cleanup)))
 
         missing_action_permission = copy.deepcopy(experiment)
         del missing_action_permission["protocol"]["action_permissions"][
@@ -3049,6 +3261,19 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "reversal_action"
         ]
         self.assertTrue(list(validator.iter_errors(missing_reversal_action)))
+
+    def test_experiment_records_failed_cleanup_without_deriving_g5_verdict(self):
+        self.require_all_schemas_and_examples()
+        experiment = self.read_json_file(
+            SCHEMA_EXAMPLES["experiment"]["valid"]
+        )
+        experiment["effects"]["cleanup"]["result"] = "failed"
+
+        self.assertEqual(
+            [], list(self.schema_validator("experiment").iter_errors(experiment))
+        )
+        self.assertNotIn("gates", experiment)
+        self.assertNotIn("gate_verdict", experiment)
 
     def test_decision_chosen_outcome_must_resolve_to_a_declared_alternative(self):
         self.require_all_schemas_and_examples()
@@ -3072,6 +3297,12 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "asset:sample.previous-decision"
         )
         self.assertTrue(list(validator.iter_errors(mistyped_supersession)))
+
+        self_supersession = copy.deepcopy(decision)
+        self_supersession["supersedes_decision_id"] = self_supersession[
+            "record_id"
+        ]
+        self.assertTrue(list(validator.iter_errors(self_supersession)))
 
     def test_schema_examples_are_synthetic_and_contain_no_secret_shaped_fields(self):
         self.require_all_schemas_and_examples()

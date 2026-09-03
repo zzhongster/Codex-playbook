@@ -3,7 +3,7 @@
   "$id": "https://schemas.example.invalid/product-reverse-engineering/experiment.schema.json",
   "title": "不可变运行实验三产物集合",
   "description": "协议、结果和副作用处置是三个独立产物；字段与 experiment-record 模板的三个 YAML 产物对齐。",
-  "$comment": "仓库验证器实现 x-experiment-artifacts-are-bound，检查产物身份、协议绑定、上下文、方法与证据闭合、独立复现、运行 ID、证据索引和结果/清理一致性。",
+  "$comment": "仓库验证器实现 x-experiment-artifacts-are-bound，检查每个独立产物的方法与证据双向闭合、协议绑定、上下文、独立复现、运行 ID、证据索引和目标主张闭合；实验如实记录清理失败，不在本 schema 推导 G5 判定。",
   "type": "object",
   "additionalProperties": false,
   "x-experiment-artifacts-are-bound": true,
@@ -664,7 +664,28 @@
         "evidence_references": {
           "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "result": {
+                "const": "passed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "actual_observations": {
+                "minItems": 1
+              },
+              "evidence_references": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
     },
     "firstFailure": {
       "type": "object",
@@ -784,6 +805,8 @@
         "product_version",
         "scope_or_module",
         "evidence_references",
+        "method_definitions",
+        "evidence_method_entries",
         "protocol_reference",
         "run_results",
         "independent_reproduction_results",
@@ -815,14 +838,19 @@
           "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
         },
         "evidence_references": {
-          "allOf": [
-            {
-              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
-            },
-            {
-              "minItems": 1
-            }
-          ]
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+        },
+        "method_definitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/methodDefinition"
+          }
+        },
+        "evidence_method_entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceMethodEntry"
+          }
         },
         "protocol_reference": {
           "$ref": "#/$defs/protocolReference"
@@ -900,7 +928,25 @@
         "disposition_proof_references": {
           "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "occurred": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "disposition_proof_references": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
     },
     "cleanupStep": {
       "type": "object",
@@ -963,6 +1009,8 @@
         "product_version",
         "scope_or_module",
         "evidence_references",
+        "method_definitions",
+        "evidence_method_entries",
         "protocol_reference",
         "side_effect_records",
         "cleanup",
@@ -994,14 +1042,19 @@
           "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/stableId"
         },
         "evidence_references": {
-          "allOf": [
-            {
-              "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
-            },
-            {
-              "minItems": 1
-            }
-          ]
+          "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
+        },
+        "method_definitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/methodDefinition"
+          }
+        },
+        "evidence_method_entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceMethodEntry"
+          }
         },
         "protocol_reference": {
           "$ref": "#/$defs/protocolReference"
@@ -1040,7 +1093,25 @@
             "disposition_proof_references": {
               "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
             }
-          }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "result": {
+                    "const": "passed"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "disposition_proof_references": {
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          ]
         },
         "residual_checks": {
           "type": "object",
@@ -1069,7 +1140,25 @@
             "evidence_references": {
               "$ref": "https://schemas.example.invalid/product-reverse-engineering/definitions.schema.json#/$defs/evidenceReferences"
             }
-          }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "result": {
+                    "const": "passed"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "evidence_references": {
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          ]
         }
       }
     }

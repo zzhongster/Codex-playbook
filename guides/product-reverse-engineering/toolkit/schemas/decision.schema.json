@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.example.invalid/product-reverse-engineering/decision.schema.json",
   "title": "人类决定记录",
-  "$comment": "仓库验证器实现 x-chosen-alternative-is-declared，保证 alternative_id 唯一且 chosen_outcome 解析到 alternatives 中的 ID。",
+  "$comment": "仓库验证器实现 x-chosen-alternative-is-declared，保证 alternative_id 唯一、chosen_outcome 解析到 alternatives，且 supersedes_decision_id 不得自指。",
   "type": "object",
   "additionalProperties": false,
   "x-chosen-alternative-is-declared": true,

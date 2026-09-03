@@ -115,6 +115,8 @@ owner: "REPLACE_WITH_NAMED_RESULT_OWNER"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"
 scope_or_module: "REPLACE_WITH_QUALIFIED_SCOPE_OR_MODULE_ID"
 evidence_references: []
+method_definitions: []
+evidence_method_entries: []
 protocol_reference:
   protocol_id: "artifact:p5-protocol.template-replace-me"
   protocol_content_hash: "sha256:REPLACE_WITH_PROTOCOL_CONTENT_HASH"
@@ -164,6 +166,8 @@ owner: "REPLACE_WITH_NAMED_EFFECTS_OWNER"
 product_version: "REPLACE_WITH_IMMUTABLE_PRODUCT_VERSION"
 scope_or_module: "REPLACE_WITH_QUALIFIED_SCOPE_OR_MODULE_ID"
 evidence_references: []
+method_definitions: []
+evidence_method_entries: []
 protocol_reference:
   protocol_id: "artifact:p5-protocol.template-replace-me"
   protocol_content_hash: "sha256:REPLACE_WITH_PROTOCOL_CONTENT_HASH"
@@ -197,7 +201,7 @@ residual_checks:
 
 方法成熟度只评价取证、建模或验证方法及其证据基础，不评价目标产品事实；产品主张必须在主张—证据记录中使用 `claim_status`、`confidence` 和支持/反驳证据引用。
 
-每个 YAML 块的 `status` 都是该产物自己的生命周期状态；只有 PROTOCOL 保存 `claim_references`，实验支持的主张真值仍只在主张—证据记录维护。`method_definitions[].method_maturity` 只评价对应方法，映射必须同时解析到 PROTOCOL 的 evidence 与 method ID。
+每个 YAML 块的 `status` 都是该产物自己的生命周期状态；只有 PROTOCOL 保存 `claim_references`，且 `target_claim_references` 必须是它的子集；实验支持的主张真值仍只在主张—证据记录维护。三个产物各自保存 `method_definitions` 与 `evidence_method_entries`，`method_maturity` 只评价对应方法。某产物没有 evidence 时两个数组可以为空；只要 `evidence_references` 非空，每个 evidence 必须恰好映射一次，mapping 的 evidence 与 method 集合必须分别和本产物声明的 evidence 与 method 双向闭合。
 
 `template.replace-me` 仅演示引用闭合；发布前必须替换为已登记 ID，或同时删除 evidence、method 与映射示例。
 
@@ -205,7 +209,9 @@ residual_checks:
 
 PROTOCOL 在首次执行前完成并置为 `frozen`。协议一旦冻结，运行结果、首次失败、副作用、清理或残留检查都不得回写协议；协议变化必须创建新 `artifact_id` 与 hash。RESULT 与 EFFECTS 只能引用精确的 `protocol_id` 和 `protocol_content_hash`，不得复制可被事后改写的协议字段。
 
-RESULT 和 EFFECTS 的 `product_version` 与 `scope_or_module` 必须逐字等于 PROTOCOL；上下文变化必须创建并冻结新协议，不能在派生产物中另写版本或范围。run、independent reproduction、first failure、effect、cleanup 和 residual check 的内层证据引用必须解析到所属产物顶层的 `evidence_references`；`first_failure.run_id` 必须解析到本 RESULT 已声明的某个运行或独立复现 run ID，未发生首次失败时保持 `null`。
+RESULT 和 EFFECTS 的 `product_version` 与 `scope_or_module` 必须逐字等于 PROTOCOL；上下文变化必须创建并冻结新协议，不能在派生产物中另写版本或范围。run、independent reproduction、first failure、effect、cleanup 和 residual check 的内层证据引用必须解析到所属产物顶层的 `evidence_references`；每个产物的顶层 evidence 也必须由该产物自己的 evidence-method mapping 完整解释。`first_failure.run_id` 必须解析到本 RESULT 已声明的某个运行或独立复现 run ID，未发生首次失败时保持 `null`。
+
+业务 run 为 `passed` 而 cleanup 为 `failed` 是必须如实保存的有效审计事实，不能由实验记录 schema 拒绝或改写；该组合也不会自动产生 G5 `pass`。G5 仍由覆盖与门禁规则依据独立的不可变输入判定，清理失败须作为未满足条件或缺口进入其评审。
 
 ## 不可变环境与授权
 

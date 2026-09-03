@@ -162,6 +162,18 @@
     "evidence_references": [
       "evidence:sample.order-response"
     ],
+    "method_definitions": [
+      {
+        "method_id": "method:sample.result-observation",
+        "method_maturity": "proposed"
+      }
+    ],
+    "evidence_method_entries": [
+      {
+        "evidence_id": "evidence:sample.order-response",
+        "method_id": "method:sample.result-observation"
+      }
+    ],
     "protocol_reference": {
       "protocol_id": "artifact:sample.order-protocol",
       "protocol_content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
@@ -225,6 +237,18 @@
     "scope_or_module": "scope:sample.orders",
     "evidence_references": [
       "evidence:sample.cleanup-check"
+    ],
+    "method_definitions": [
+      {
+        "method_id": "method:sample.cleanup-validation",
+        "method_maturity": "proposed"
+      }
+    ],
+    "evidence_method_entries": [
+      {
+        "evidence_id": "evidence:sample.cleanup-check",
+        "method_id": "method:sample.cleanup-validation"
+      }
     ],
     "protocol_reference": {
       "protocol_id": "artifact:sample.order-protocol",
