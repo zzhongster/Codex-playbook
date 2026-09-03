@@ -205,6 +205,8 @@ residual_checks:
 
 PROTOCOL 在首次执行前完成并置为 `frozen`。协议一旦冻结，运行结果、首次失败、副作用、清理或残留检查都不得回写协议；协议变化必须创建新 `artifact_id` 与 hash。RESULT 与 EFFECTS 只能引用精确的 `protocol_id` 和 `protocol_content_hash`，不得复制可被事后改写的协议字段。
 
+RESULT 和 EFFECTS 的 `product_version` 与 `scope_or_module` 必须逐字等于 PROTOCOL；上下文变化必须创建并冻结新协议，不能在派生产物中另写版本或范围。run、independent reproduction、first failure、effect、cleanup 和 residual check 的内层证据引用必须解析到所属产物顶层的 `evidence_references`；`first_failure.run_id` 必须解析到本 RESULT 已声明的某个运行或独立复现 run ID，未发生首次失败时保持 `null`。
+
 ## 不可变环境与授权
 
 - 在 PROTOCOL 执行前写入 `protocol_frozen_at`，固定 environment identity、构建、部署、运行时、依赖、配置哈希、功能开关、时区、角色、测试账号和输入指纹。

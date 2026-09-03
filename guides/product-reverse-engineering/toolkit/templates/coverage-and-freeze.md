@@ -193,7 +193,7 @@ gates:
 
 未来但适用的门禁保持 `pending`；只有已评估否定用 `fail`，`not-applicable` 必须有具名人类批准。G5 只允许 `pending`、`pass` 或 `fail`，绝不使用 `not-applicable`；获批非运行分支仍必须对 G5 作通过或失败判定。
 
-G5 的合法组合是封闭集合：运行分支开始或失败时为 `runtime + pending/fail + required`，获得完整运行确认时才是 `runtime + pass + confirmed`；获批静态分支只能是 `approved-static + pass/fail + unavailable-with-approved-static-ceiling`。静态分支必须在 `static_non_runtime_coverage` 持续引用 `ART-P5-RUNTIME-GAP` 的稳定 ID/哈希，并保留至少一个未获运行确认的 gap count；不能以 G5 通过清零或隐藏运行覆盖缺口。运行分支则保持 gap reference 为 `null`、gap count 为 `0`。
+G5 的合法组合是封闭集合：运行分支开始或失败时为 `runtime + pending/fail + required`，获得完整运行确认时才是 `runtime + pass + confirmed`；获批静态分支只能是 `approved-static + pending/pass/fail + unavailable-with-approved-static-ceiling`。静态分支即使仍在等待门禁判定，也必须在 `static_non_runtime_coverage` 持续引用 `ART-P5-RUNTIME-GAP` 的稳定 ID/哈希，并保留至少一个未获运行确认的 gap count；不能以 `pending` 或 G5 通过清零、隐藏运行覆盖缺口。运行分支则保持 gap reference 为 `null`、gap count 为 `0`。
 
 每个 `reviewer` 与 `decided_at` 是覆盖汇总中的评审投影，并与对应证据引用一起指向人工决定；它们不写入确定性 `ART-G*` 派生门禁记录的内容身份，派生记录只由规则版本和不可变输入计算。
 

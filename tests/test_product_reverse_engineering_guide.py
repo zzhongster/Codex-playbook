@@ -560,6 +560,11 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 ("runtime", "pass", "confirmed"),
                 (
                     "approved-static",
+                    "pending",
+                    "unavailable-with-approved-static-ceiling",
+                ),
+                (
+                    "approved-static",
                     "pass",
                     "unavailable-with-approved-static-ceiling",
                 ),
@@ -752,6 +757,8 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             },
             set(metadata),
         )
+        top_level_evidence_ids = set(metadata["evidence_references"])
+        run_ids = set()
         for list_key in ("run_results", "independent_reproduction_results"):
             self.assertIsInstance(metadata[list_key], list)
             self.assertTrue(metadata[list_key])
@@ -778,9 +785,16 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             )
             self.assertIsInstance(result["run_id"], str)
             self.assertTrue(result["run_id"].strip())
+            self.assertNotIn(result["run_id"], run_ids)
+            run_ids.add(result["run_id"])
             self.assertIn(result["result"], {"not-run", "passed", "failed", "mixed"})
             self.assertIsInstance(result["actual_observations"], list)
             self.assert_qualified_references(result["evidence_references"], "evidence")
+            self.assertTrue(
+                set(result["evidence_references"]).issubset(
+                    top_level_evidence_ids
+                )
+            )
         self.assertEqual(
             {
                 "present",
@@ -809,6 +823,16 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assert_qualified_references(
             metadata["first_failure"]["evidence_references"], "evidence"
         )
+        self.assertTrue(
+            set(metadata["first_failure"]["evidence_references"]).issubset(
+                top_level_evidence_ids
+            )
+        )
+        failure_run_id = metadata["first_failure"]["run_id"]
+        if metadata["first_failure"]["present"]:
+            self.assertIn(failure_run_id, run_ids)
+        else:
+            self.assertIsNone(failure_run_id)
 
     def assert_experiment_effects_metadata(self, metadata):
         self.assertEqual(
@@ -829,6 +853,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             },
             set(metadata),
         )
+        top_level_evidence_ids = set(metadata["evidence_references"])
         self.assertIsInstance(metadata["side_effect_records"], list)
         self.assertTrue(metadata["side_effect_records"])
         for effect in metadata["side_effect_records"]:
@@ -851,6 +876,11 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.assert_qualified_references(
                 effect["disposition_proof_references"], "evidence"
             )
+            self.assertTrue(
+                set(effect["disposition_proof_references"]).issubset(
+                    top_level_evidence_ids
+                )
+            )
         self.assertEqual(
             {"steps", "result", "disposition_proof_references"},
             set(metadata["cleanup"]),
@@ -866,6 +896,11 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.assertEqual({"step_id", "action", "verification"}, set(step))
         self.assert_qualified_references(
             metadata["cleanup"]["disposition_proof_references"], "evidence"
+        )
+        self.assertTrue(
+            set(metadata["cleanup"]["disposition_proof_references"]).issubset(
+                top_level_evidence_ids
+            )
         )
         self.assertEqual(
             {"checks", "result", "evidence_references"},
@@ -885,6 +920,11 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         )
         self.assert_qualified_references(
             metadata["residual_checks"]["evidence_references"], "evidence"
+        )
+        self.assertTrue(
+            set(metadata["residual_checks"]["evidence_references"]).issubset(
+                top_level_evidence_ids
+            )
         )
 
     def assert_experiment_artifact_packages(self, artifacts):
@@ -915,6 +955,15 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         }
         self.assertEqual(protocol_reference, result["protocol_reference"])
         self.assertEqual(protocol_reference, effects["protocol_reference"])
+        for derived_artifact in (result, effects):
+            self.assertEqual(
+                protocol["product_version"],
+                derived_artifact["product_version"],
+            )
+            self.assertEqual(
+                protocol["scope_or_module"],
+                derived_artifact["scope_or_module"],
+            )
         protocol_only_fields = {
             "authorization_record_id",
             "authorization_gate_record_id",
@@ -2402,6 +2451,9 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             "RESULT 与 EFFECTS 只能引用",
             "协议一旦冻结",
             "计算 content hash 时排除 `content_hash` 包络字段",
+            "`product_version` 与 `scope_or_module` 必须逐字等于 PROTOCOL",
+            "内层证据引用必须解析到所属产物顶层的 `evidence_references`",
+            "`first_failure.run_id` 必须解析到本 RESULT",
         ):
             self.assertIn(boundary_statement, experiment)
         self.assertNotIn("用 `artifacts` 分别登记", experiment)
@@ -2485,8 +2537,12 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.assert_coverage_gate_metadata(mutation)
 
     def test_coverage_template_rejects_invalid_g5_branch_combinations(self):
-        metadata = self.parse_yaml_metadata(
-            self.read_template_document("coverage-and-freeze")
+        document = self.read_template_document("coverage-and-freeze")
+        metadata = self.parse_yaml_metadata(document)
+        self.assertIn(
+            "approved-static + pending/pass/fail + "
+            "unavailable-with-approved-static-ceiling",
+            document,
         )
         g5 = metadata["gates"]["G5"]
         self.assertTrue(
@@ -2513,6 +2569,13 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         }
         self.assert_g5_branch_combination(approved_static)
 
+        approved_static_pending = copy.deepcopy(approved_static)
+        approved_static_pending["verdict"] = "pending"
+        self.assert_g5_branch_combination(approved_static_pending)
+        approved_static_pending_record = copy.deepcopy(metadata)
+        approved_static_pending_record["gates"]["G5"] = approved_static_pending
+        self.assert_coverage_gate_metadata(approved_static_pending_record)
+
         invalid_mutations = []
         runtime_confirmed_while_pending = copy.deepcopy(g5)
         runtime_confirmed_while_pending[
@@ -2527,6 +2590,12 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         static_hides_gap = copy.deepcopy(approved_static)
         static_hides_gap["static_non_runtime_coverage"]["gap_count"] = 0
         invalid_mutations.append(static_hides_gap)
+        static_clears_gap = copy.deepcopy(approved_static_pending)
+        static_clears_gap["static_non_runtime_coverage"] = {
+            "gap_artifact_reference": None,
+            "gap_count": 0,
+        }
+        invalid_mutations.append(static_clears_gap)
         for mutation in invalid_mutations:
             with self.subTest(mutation=mutation):
                 with self.assertRaises(AssertionError):
@@ -2579,6 +2648,75 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         effects["expected_observations"] = []
         with self.assertRaises(AssertionError):
             self.assert_experiment_artifact_packages(copied_protocol_truth)
+
+    def test_experiment_derived_artifacts_reject_protocol_context_drift(self):
+        artifacts = self.parse_all_yaml_metadata(
+            self.read_template_document("experiment-record")
+        )
+        context_mutations = (
+            ("ART-P5-RESULT", "product_version", "MUTATED_VERSION"),
+            ("ART-P5-RESULT", "scope_or_module", "MUTATED_SCOPE"),
+            ("ART-P5-EFFECTS", "product_version", "MUTATED_VERSION"),
+            ("ART-P5-EFFECTS", "scope_or_module", "MUTATED_SCOPE"),
+        )
+        for artifact_type, field, replacement in context_mutations:
+            with self.subTest(artifact_type=artifact_type, field=field):
+                mutation = copy.deepcopy(artifacts)
+                target = next(
+                    item
+                    for item in mutation
+                    if item["artifact_type"] == artifact_type
+                )
+                target[field] = replacement
+                with self.assertRaises(AssertionError):
+                    self.assert_experiment_artifact_packages(mutation)
+
+    def test_experiment_artifacts_reject_ghost_evidence_and_bad_failure_run(self):
+        artifacts = self.parse_all_yaml_metadata(
+            self.read_template_document("experiment-record")
+        )
+        ghost_evidence_mutations = (
+            ("ART-P5-RESULT", ("run_results", 0, "evidence_references")),
+            (
+                "ART-P5-RESULT",
+                ("independent_reproduction_results", 0, "evidence_references"),
+            ),
+            ("ART-P5-RESULT", ("first_failure", "evidence_references")),
+            (
+                "ART-P5-EFFECTS",
+                ("side_effect_records", 0, "disposition_proof_references"),
+            ),
+            (
+                "ART-P5-EFFECTS",
+                ("cleanup", "disposition_proof_references"),
+            ),
+            ("ART-P5-EFFECTS", ("residual_checks", "evidence_references")),
+        )
+        for artifact_type, path in ghost_evidence_mutations:
+            with self.subTest(artifact_type=artifact_type, path=path):
+                mutation = copy.deepcopy(artifacts)
+                target = next(
+                    item
+                    for item in mutation
+                    if item["artifact_type"] == artifact_type
+                )
+                nested = target
+                for segment in path[:-1]:
+                    nested = nested[segment]
+                nested[path[-1]] = ["evidence:mutation.ghost"]
+                with self.assertRaises(AssertionError):
+                    self.assert_experiment_artifact_packages(mutation)
+
+        bad_failure_run = copy.deepcopy(artifacts)
+        result = next(
+            item
+            for item in bad_failure_run
+            if item["artifact_type"] == "ART-P5-RESULT"
+        )
+        result["first_failure"]["present"] = True
+        result["first_failure"]["run_id"] = "run:mutation.not-declared"
+        with self.assertRaises(AssertionError):
+            self.assert_experiment_artifact_packages(bad_failure_run)
 
     def test_required_entry_files_exist(self):
         for path in REQUIRED_ENTRY_FILES:
