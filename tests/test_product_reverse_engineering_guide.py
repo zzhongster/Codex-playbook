@@ -69,6 +69,21 @@ REQUIRED_ACCESS_TRACK_SECTIONS = (
     "升级路径",
     "停止条件",
 )
+ACCESS_TRACK_ENTRY_CONTRACT = (
+    "- **进入/恢复门禁：** 每次进入或恢复本轨道，都必须绑定不可变的 "
+    "`ART-P0-AUTH`，并验证当前 `ART-G0-AUTH` 的 `verdict` 为 `pass`；"
+    "授权、版本、账号、环境、数据或动作发生变化时，必须重新授权并取得新的 "
+    "`pass`，旧判定不得沿用。"
+)
+ACCESS_TRACK_HISTORY_CONTRACT = (
+    "- **历史保留：** 新证据必须新建证据项和类型化追踪链接；已有证据、主张、"
+    "状态历史和 `ART-P4-TRACE` 版本必须保留且保持可寻址，禁止原地改写或删除。"
+)
+ACCESS_TRACK_STOP_CONTRACT = (
+    "- **立即停止：** 一旦发生授权漂移、版本不匹配、不安全写入、敏感信息泄露或"
+    "环境未绑定，必须立即停止相关执行；在重新授权且新的 `ART-G0-AUTH` 判定为 "
+    "`pass` 前，不得继续或恢复。"
+)
 
 
 class ProductReverseEngineeringGuideTests(unittest.TestCase):
@@ -121,6 +136,50 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         match = re.fullmatch(r"\*\*适用范围：\*\*\s*(\S.+)", declaration_lines[0])
         self.assertIsNotNone(match)
         self.assertTrue(match.group(1).strip())
+
+    def assert_exact_normative_bullet(
+        self, document, section_heading, contract_heading, expected
+    ):
+        section = self.section_text(document, section_heading)
+        contract = self.section_text(section, contract_heading)
+        normative_bullets = [
+            line.strip()
+            for line in contract.splitlines()
+            if line.strip().startswith("- **")
+        ]
+        self.assertEqual([expected], normative_bullets)
+        return contract
+
+    def assert_access_track_normative_contracts(self, document):
+        self.assert_exact_normative_bullet(
+            document,
+            "## 适用条件",
+            "### 进入/恢复规范",
+            ACCESS_TRACK_ENTRY_CONTRACT,
+        )
+        history_contract = self.assert_exact_normative_bullet(
+            document,
+            "## 升级路径",
+            "### 证据升级规范",
+            ACCESS_TRACK_HISTORY_CONTRACT,
+        )
+        stop_contract = self.assert_exact_normative_bullet(
+            document,
+            "## 停止条件",
+            "### 安全停止规范",
+            ACCESS_TRACK_STOP_CONTRACT,
+        )
+        for reversal in ("不保留历史", "允许原地改写", "可以删除旧"):
+            self.assertNotIn(reversal, history_contract)
+        for reversal in (
+            "不要停止",
+            "无需停止",
+            "不必停止",
+            "可以继续",
+            "允许继续",
+            "继续执行",
+        ):
+            self.assertNotIn(reversal, stop_contract)
 
     def assert_phase_summary_self_hash_invariant(self, document):
         phase_summary = self.section_text(document, "## 阶段摘要记录")
@@ -239,37 +298,34 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                         f"thin section in {name}: {section_name}",
                     )
 
-    def test_access_tracks_share_evidence_outputs_and_append_only_upgrade_rules(self):
+    def test_access_tracks_use_exact_entry_history_and_stop_contracts(self):
         for name in ACCESS_TRACK_DOCUMENTS:
             with self.subTest(track=name):
-                document = self.read_access_track(name)
-                upgrade = self.section_text(document, "## 升级路径")
-                for contract in (
-                    "证据项",
-                    "主张",
-                    "类型化追踪链接",
-                    "ART-P4-TRACE",
-                    "保留历史",
-                ):
-                    self.assertIn(contract, upgrade)
-                self.assertIn("新建", upgrade)
-                self.assertNotIn("覆盖旧", upgrade)
-
-    def test_access_tracks_stop_on_shared_safety_and_identity_failures(self):
-        shared_stops = (
-            "授权漂移",
-            "版本不匹配",
-            "不安全写入",
-            "敏感信息泄露",
-            "环境未绑定",
-        )
-        for name in ACCESS_TRACK_DOCUMENTS:
-            with self.subTest(track=name):
-                stop = self.section_text(
-                    self.read_access_track(name), "## 停止条件"
+                self.assert_access_track_normative_contracts(
+                    self.read_access_track(name)
                 )
-                for trigger in shared_stops:
-                    self.assertIn(trigger, stop)
+
+    def test_access_track_contracts_reject_history_and_stop_semantic_reversals(self):
+        document = self.read_access_track("black-box")
+        self.assert_access_track_normative_contracts(document)
+        mutations = {
+            "negated history preservation": document.replace(
+                ACCESS_TRACK_HISTORY_CONTRACT,
+                "- **历史保留：** 不保留历史，允许原地改写并删除旧主张。",
+            ),
+            "negated immediate stop": document.replace(
+                ACCESS_TRACK_STOP_CONTRACT,
+                "- **立即停止：** 发生安全触发器时不要停止，可以继续执行。",
+            ),
+            "continued execution exception": document.replace(
+                ACCESS_TRACK_STOP_CONTRACT,
+                ACCESS_TRACK_STOP_CONTRACT + " 可以继续执行已开始的动作。",
+            ),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(mutation=name):
+                with self.assertRaises(AssertionError):
+                    self.assert_access_track_normative_contracts(mutation)
 
     def test_black_box_track_limits_sources_and_binds_observation_matrix(self):
         document = self.read_access_track("black-box")
@@ -362,6 +418,56 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIn("源码分支", cannot_prove)
         self.assertIn("测试通过", cannot_prove)
         self.assertIn("部署行为", cannot_prove)
+
+    def test_white_box_track_authorizes_operations_individually(self):
+        applicability = self.section_text(
+            self.read_access_track("white-box"), "## 适用条件"
+        )
+        authorization = self.section_text(applicability, "### 逐项授权记录")
+        operation_rows = [
+            match.group(1)
+            for line in authorization.splitlines()
+            if (
+                match := re.fullmatch(
+                    r"\| (源码读取|构建|静态分析|运行观察|调试|数据访问) \| .+ \|",
+                    line,
+                )
+            )
+        ]
+        self.assertEqual(
+            ["源码读取", "构建", "静态分析", "运行观察", "调试", "数据访问"],
+            operation_rows,
+        )
+        self.assertIn("每项操作", authorization)
+        self.assertIn("`ART-P0-AUTH`", authorization)
+        self.assertIn("未获准的操作不得执行", authorization)
+
+    def test_white_box_track_keeps_runtime_optional_with_governed_static_ceiling(self):
+        applicability = self.section_text(
+            self.read_access_track("white-box"), "## 适用条件"
+        )
+        non_runtime = self.section_text(
+            applicability, "### 运行可选性与非运行分支"
+        )
+        for contract in (
+            "运行观察不是进入白盒轨道的必需条件",
+            "授权未覆盖运行",
+            "无法安全运行",
+            "显式选择受治理的非运行分支",
+            "ART-P5-STATIC",
+            "ART-P5-RUNTIME-GAP",
+            "ART-P5-STATIC-ACCEPTANCE",
+            "statically-supported",
+            "inferred",
+            "conflicting",
+            "unsupported",
+            "不得标为 `runtime-confirmed`",
+        ):
+            self.assertIn(contract, non_runtime)
+
+    def test_readme_validation_scope_includes_core_and_access_tracks(self):
+        validation = self.section_text(self.read_guide(), "## 验证")
+        self.assertIn("九项核心模块和三条访问轨道", validation)
 
     def test_guide_readme_links_every_foundation_document_relatively(self):
         guide = self.read_guide()
