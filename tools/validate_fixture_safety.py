@@ -56,7 +56,12 @@ _URL = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s\"'<>]+", re.IGNORECASE)
 _DOMAIN = re.compile(
     r"(?<![A-Za-z0-9_-])"
     r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
-    r"[a-z]{2,63}(?![A-Za-z0-9_-])"
+    r"(?:[a-z]{2,63}|xn--[a-z0-9](?:[a-z0-9-]{0,57}[a-z0-9])?)"
+    r"(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
+)
+_DNS_SINGLE_LABEL = re.compile(
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
 )
 _IPV4 = re.compile(r"(?<![0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9])")
 _IPV6 = re.compile(
@@ -68,9 +73,13 @@ _STABLE_ID = re.compile(
     r"[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+)"
 )
 _NETWORK_LABEL = re.compile(
-    r"(?i)\b(?:address|domain|host|hostname|ip|ip-address|server)"
+    r"(?i)\b(?:address|domain|host|hostname|ip|ip-address|node|peer|server)"
     r"\s*[:=]\s*(?P<target>\[[0-9a-f:]+\]|"
     r"(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}|[a-z0-9.-]+)"
+)
+_NETWORK_FIELD = re.compile(
+    r"(?i)(?:^|[_-])(?:host|hostname|node|peer|server)"
+    r"(?:[_-](?:address|id|name))?$"
 )
 _AUTHORIZATION_FIELD = re.compile(r"(?i)^(?:authorization|proxy_authorization)$")
 _AUTHORIZATION_PARAMETER_FIELD = re.compile(
@@ -188,13 +197,20 @@ def _requires_fictional_metadata(path_keys):
     return False
 
 
-def _network_identifier_errors(identifier, path):
+def _network_identifier_errors(identifier, path, reject_single_label=False):
     normalized = identifier.strip("[]").rstrip(".")
     try:
         address = ipaddress.ip_address(normalized)
     except ValueError:
         if _DOMAIN.fullmatch(normalized) and not _reserved_host(normalized):
             return [f"{path}: non-reserved domain {normalized.lower()}"]
+        if (
+            reject_single_label
+            and _DNS_SINGLE_LABEL.fullmatch(normalized)
+            and not _reserved_host(normalized)
+            and not _FICTIONAL_MARKER.search(normalized)
+        ):
+            return [f"{path}: non-synthetic single-label host {normalized}"]
         return []
     if not _reserved_host(str(address)):
         return [f"{path}: non-reserved IP address {address}"]
@@ -290,7 +306,9 @@ def _string_safety_errors(value, path, path_keys):
         if parsed_url.username is not None or parsed_url.password is not None:
             errors.append(f"{path}: URL userinfo credential")
         if isinstance(host, str):
-            errors.extend(_network_identifier_errors(host, path))
+            errors.extend(
+                _network_identifier_errors(host, path, reject_single_label=True)
+            )
 
     non_url_text = _URL.sub("", value)
     normalized_non_url_text = non_url_text.strip(" \t\r\n[](){}<>,;\"'")
@@ -310,8 +328,19 @@ def _string_safety_errors(value, path, path_keys):
         for match in _DOMAIN.finditer(non_url_text):
             errors.extend(_network_identifier_errors(match.group(0), path))
 
+    if path_keys and _NETWORK_FIELD.search(path_keys[-1]):
+        errors.extend(
+            _network_identifier_errors(
+                normalized_non_url_text, path, reject_single_label=True
+            )
+        )
+
     for match in _NETWORK_LABEL.finditer(non_url_text):
-        errors.extend(_network_identifier_errors(match.group("target"), path))
+        errors.extend(
+            _network_identifier_errors(
+                match.group("target"), path, reject_single_label=True
+            )
+        )
     return errors
 
 

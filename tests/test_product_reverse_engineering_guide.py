@@ -4288,6 +4288,44 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         self.assertIn("版本字段", contributing)
         self.assertIn("字段语义", contributing)
 
+    def test_fixture_safety_closes_case_punycode_and_single_label_host_bypasses(self):
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+        bypass_mutations = {
+            "mixed-case domain": {"note": "peer=Api.Customer.Com"},
+            "uppercase domain": {"note": "peer=API.CUSTOMER.COM"},
+            "mixed-case host label": {"note": "HoSt:Api.Customer.Com"},
+            "uppercase host label": {"note": "HOST:API.CUSTOMER.COM"},
+            "punycode domain": {"note": "peer=customer.xn--p1ai"},
+            "host single label": {"host": "prod-db-01"},
+            "hostname single label": {"hostname": "prod-db-01"},
+            "server single label": {"server": "prod-db-01"},
+            "node single label": {"node": "prod-db-01"},
+            "peer single label": {"peer": "prod-db-01"},
+            "labeled single host": {"note": "HOST:prod-db-01"},
+        }
+        for label, mutation in bypass_mutations.items():
+            with self.subTest(label=label):
+                self.assertTrue(fixture_safety_errors(mutation))
+
+        safe_regressions = {
+            "reserved_host": "api.example.invalid",
+            "documentation_host": "example.com",
+            "synthetic_host": "synthetic-host",
+            "fictional_node": "fictional-node",
+            "type": "Api.Customer.Com",
+            "package": "com.sample.app",
+            "symbol": "System.Net.HttpClient",
+            "filename": "order-response.json",
+            "version": "1.2.3.4",
+        }
+        self.assertEqual([], fixture_safety_errors(safe_regressions))
+
+        contributing = self.read_repo_file("CONTRIBUTING.md")
+        for policy_term in ("大小写不敏感", "Punycode", "单标签"):
+            self.assertIn(policy_term, contributing)
+
     def test_fixture_safety_limits_business_checks_to_identity_fields(self):
         fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
             "fixture_safety_errors"
