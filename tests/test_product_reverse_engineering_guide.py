@@ -44,6 +44,10 @@ ACCESS_TRACK_DOCUMENTS = {
 }
 STACK_DOCUMENTS = {
     "delphi-desktop": GUIDE_ROOT / "stacks" / "delphi-desktop.md",
+    "dotnet-backends": GUIDE_ROOT / "stacks" / "dotnet-backends.md",
+    "data-messaging-and-infrastructure": GUIDE_ROOT
+    / "stacks"
+    / "data-messaging-and-infrastructure.md",
     "java-backends": GUIDE_ROOT / "stacks" / "java-backends.md",
     "web-products": GUIDE_ROOT / "stacks" / "web-products.md",
 }
@@ -147,6 +151,46 @@ REQUIRED_JAVA_SECTIONS = (
     "常见盲区与停止规则",
     "纵向追踪示例",
     "有序工作流",
+)
+REQUIRED_DOTNET_SECTIONS = (
+    "Solution、Project、TFM 与构建身份",
+    "Host 启动、IIS、Kestrel 与部署身份",
+    "ASP.NET Core Middleware 顺序与 Endpoint Routing",
+    "传统 ASP.NET 条件分支",
+    "DI 生命周期、Options 与配置优先级",
+    "Controller、Minimal API 与服务边界",
+    "校验、认证与授权",
+    "EF、EF Core、Dapper 与手写 SQL",
+    "事务、TransactionScope 与异步边界",
+    "异常过滤器与协议结果",
+    "Hosted Service、任务与消息",
+    "WCF、Windows Service 与 COM",
+    "DLL、EXE、IL 与反编译边界",
+    "部署与运行时关联",
+    "证据平面与主张上限",
+    "常见盲区与停止规则",
+    "纵向追踪示例",
+    "有序工作流",
+)
+REQUIRED_INFRASTRUCTURE_SECTIONS = (
+    "组件记录契约",
+    "关系型数据库与 NoSQL",
+    "缓存",
+    "搜索与索引",
+    "消息与 Outbox/Inbox",
+    "调度任务",
+    "文件与对象存储交换",
+    "第三方集成与回调",
+    "网关",
+    "容器与编排平台",
+    "秘密引用与配置边界",
+    "可观测性",
+    "备份与恢复",
+    "所有权、一致性与失败影响",
+    "配置存在与部署行为",
+    "基础设施链路示例",
+    "有序工作流",
+    "停止与安全边界",
 )
 REQUIRED_ACCESS_TRACK_SECTIONS = (
     "适用条件",
@@ -1260,6 +1304,130 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         ):
             self.assertIn(contract, trace)
 
+    def parse_registered_typed_trace(self, document, trace_heading):
+        trace = self.section_text(document, trace_heading)
+        stable_id_pattern = re.compile(
+            r"^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+$"
+        )
+
+        nodes = self.section_text(trace, "### 节点注册表")
+        node_pattern = re.compile(
+            r"\| `([^`]+)` \| `([^`]+)` \| `([^`]+)` \| ([^|]+) \|"
+        )
+        node_rows = [
+            match.groups()
+            for line in nodes.splitlines()
+            if (match := node_pattern.fullmatch(line))
+        ]
+        node_table_rows = [
+            line for line in nodes.splitlines() if line.startswith("| `")
+        ]
+        self.assertEqual(len(node_table_rows), len(node_rows))
+        self.assertTrue(node_rows)
+        node_ids = set()
+        for node_id, _kind, status, _boundary in node_rows:
+            self.assertRegex(node_id, stable_id_pattern)
+            self.assertIn(status, CLAIM_STATUSES)
+            node_ids.add(node_id)
+        self.assertEqual(len(node_ids), len(node_rows))
+
+        def registry_ids(subheading, prefix):
+            registry = self.section_text(trace, subheading)
+            pattern = re.compile(r"\| `([^`]+)` \| [^|]+ \|")
+            table_rows = [
+                line
+                for line in registry.splitlines()
+                if line.startswith(f"| `{prefix}:")
+            ]
+            identifiers = [
+                match.group(1)
+                for line in registry.splitlines()
+                if (match := pattern.fullmatch(line))
+            ]
+            self.assertEqual(len(table_rows), len(identifiers))
+            self.assertTrue(identifiers)
+            for identifier in identifiers:
+                self.assertRegex(identifier, stable_id_pattern)
+                self.assertTrue(identifier.startswith(f"{prefix}:"))
+            self.assertEqual(len(identifiers), len(set(identifiers)))
+            return identifiers
+
+        evidence_ids = registry_ids("### 证据注册表", "evidence")
+        context_ids = registry_ids("### 上下文注册表", "context")
+
+        links = self.section_text(trace, "### 类型化链接")
+        link_pattern = re.compile(
+            r"\| `([^`]+)` \| `([^`]+)` \| `([a-z-]+)` \| `([^`]+)` \| "
+            r"`([^`]+)` \| `([^`]+)` \| `([^`]+)` \|"
+        )
+        link_rows = [
+            match.groups()
+            for line in links.splitlines()
+            if (match := link_pattern.fullmatch(line))
+        ]
+        link_table_rows = [
+            line for line in links.splitlines() if line.startswith("| `trace-link:")
+        ]
+        self.assertEqual(len(link_table_rows), len(link_rows))
+        self.assertTrue(link_rows)
+        self.assertEqual(len(link_rows), len({row[0] for row in link_rows}))
+        valid_sources = node_ids | set(evidence_ids)
+        for (
+            link_id,
+            source_id,
+            relation,
+            target_id,
+            status,
+            evidence_references,
+            context_references,
+        ) in link_rows:
+            self.assertRegex(link_id, stable_id_pattern)
+            self.assertIn(source_id, valid_sources)
+            self.assertIn(target_id, node_ids)
+            self.assertIn(relation, CORE_RELATION_KINDS)
+            self.assertIn(status, CLAIM_STATUSES)
+            referenced_evidence = [
+                item.strip() for item in evidence_references.split(",") if item.strip()
+            ]
+            referenced_contexts = [
+                item.strip() for item in context_references.split(",") if item.strip()
+            ]
+            self.assertTrue(referenced_evidence)
+            self.assertTrue(referenced_contexts)
+            for evidence_id in referenced_evidence:
+                self.assertEqual(1, evidence_ids.count(evidence_id))
+            for context_id in referenced_contexts:
+                self.assertEqual(1, context_ids.count(context_id))
+
+        return trace, node_ids, link_rows
+
+    def assert_registered_trace_path(self, link_rows, source_id, target_id):
+        adjacency = {}
+        for (
+            _link_id,
+            edge_source,
+            relation,
+            edge_target,
+            _status,
+            _evidence_references,
+            _context_references,
+        ) in link_rows:
+            if relation == "reads":
+                adjacency.setdefault(edge_target, set()).add(edge_source)
+            elif not edge_source.startswith("evidence:"):
+                adjacency.setdefault(edge_source, set()).add(edge_target)
+        pending = [source_id]
+        visited = set()
+        while pending:
+            current = pending.pop()
+            if current == target_id:
+                return
+            if current in visited:
+                continue
+            visited.add(current)
+            pending.extend(adjacency.get(current, ()))
+        self.fail(f"no registered typed path: {source_id} -> {target_id}")
+
     def assert_deterministic_gate_record_schema(self, document):
         gate_records = self.section_text(document, "## 门禁判定记录与 Phase 产物")
         schema = self.section_text(gate_records, "### 派生门禁记录字段")
@@ -2311,6 +2479,528 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
                 self.assertNotEqual(document, mutation)
                 with self.assertRaises(AssertionError):
                     self.assert_java_vertical_example_contract(mutation)
+
+    def test_dotnet_stack_guide_contract(self):
+        path = STACK_DOCUMENTS["dotnet-backends"]
+        self.assertTrue(path.is_file(), f"missing .NET stack guide: {path}")
+        guide = self.read_guide()
+        self.assertIn(f"]({path.relative_to(GUIDE_ROOT).as_posix()})", guide)
+        document = self.read_stack_document("dotnet-backends")
+
+        maturity_declarations = [
+            line.strip()
+            for line in document.splitlines()
+            if line.strip().removeprefix("**").startswith("证据成熟度：")
+        ]
+        self.assertEqual(["**证据成熟度：`proposed`**"], maturity_declarations)
+        self.assert_one_nonblank_applicability_declaration(document)
+        self.assertNotIn("/Users/", document)
+        self.assertNotRegex(document, r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
+        self.assertNotIn("Spring Data", document)
+        self.assertNotIn("JAR/WAR", document)
+
+        for section_name in REQUIRED_DOTNET_SECTIONS:
+            with self.subTest(section=section_name):
+                section = self.section_text(document, f"## {section_name}")
+                substantive_lines = [
+                    line
+                    for line in section.splitlines()[1:]
+                    if line.strip() and not line.startswith("#")
+                ]
+                self.assertGreaterEqual(
+                    len(substantive_lines), 2, f"thin .NET section: {section_name}"
+                )
+
+        build = self.section_text(
+            document, "## Solution、Project、TFM 与构建身份"
+        )
+        for term in (
+            ".sln",
+            ".csproj",
+            "TargetFramework",
+            "TargetFrameworks",
+            "SDK",
+            "NuGet",
+            "restore",
+            "RID",
+            "构建配置",
+            "DLL/EXE 哈希",
+        ):
+            self.assertIn(term, build)
+        self.assertIn("目标框架不等于目标部署实际使用的运行时", build)
+
+        hosting = self.section_text(
+            document, "## Host 启动、IIS、Kestrel 与部署身份"
+        )
+        for term in (
+            "Generic Host",
+            "WebApplication.CreateBuilder",
+            "Startup",
+            "IIS",
+            "Kestrel",
+            "进程命令",
+            "assembly 哈希",
+            "运行时版本",
+        ):
+            self.assertIn(term, hosting)
+
+        pipeline = self.section_text(
+            document, "## ASP.NET Core Middleware 顺序与 Endpoint Routing"
+        )
+        for contract in (
+            "Middleware 的注册顺序、条件分支、短路和响应回程顺序分别记录",
+            "Endpoint Routing",
+            "UseRouting",
+            "UseAuthentication",
+            "UseAuthorization",
+            "MapControllers",
+            "MapGet",
+            "源码顺序只支持静态主张",
+        ):
+            self.assertIn(contract, pipeline)
+
+        traditional = self.section_text(
+            document, "## 传统 ASP.NET 条件分支"
+        )
+        for term in (
+            "System.Web",
+            "Global.asax",
+            "OWIN",
+            "ASP.NET MVC",
+            "Web API",
+            "Web Forms",
+            "条件分支",
+        ):
+            self.assertIn(term, traditional)
+
+        dependency = self.section_text(
+            document, "## DI 生命周期、Options 与配置优先级"
+        )
+        for term in (
+            "Singleton",
+            "Scoped",
+            "Transient",
+            "ValidateScopes",
+            "IOptions",
+            "IOptionsSnapshot",
+            "IOptionsMonitor",
+            "配置优先级必须按目标部署、框架版本和实际 provider 链取证",
+            "不得假定一条跨版本、跨宿主的固定优先级",
+        ):
+            self.assertIn(term, dependency)
+
+        endpoints = self.section_text(
+            document, "## Controller、Minimal API 与服务边界"
+        )
+        for term in ("Controller", "Minimal API", "endpoint filter", "DTO", "服务"):
+            self.assertIn(term, endpoints)
+
+        security = self.section_text(document, "## 校验、认证与授权")
+        for term in (
+            "模型绑定",
+            "DataAnnotations",
+            "认证",
+            "授权",
+            "policy",
+            "资源级",
+            "租户",
+        ):
+            self.assertIn(term, security)
+
+        persistence = self.section_text(
+            document, "## EF、EF Core、Dapper 与手写 SQL"
+        )
+        for term in (
+            "EF6",
+            "EF Core",
+            "Dapper",
+            "手写 SQL",
+            "tracking/no-tracking",
+            "lazy/eager",
+            "N+1",
+            "数据库迁移",
+        ):
+            self.assertIn(term, persistence)
+
+        transaction = self.section_text(
+            document, "## 事务、TransactionScope 与异步边界"
+        )
+        for term in (
+            "DbContext transaction",
+            "TransactionScope",
+            "ambient transaction",
+            "async/await",
+            "ConfigureAwait",
+            "提交",
+            "回滚",
+            "不会按假设跨越",
+        ):
+            self.assertIn(term, transaction)
+
+        exceptions = self.section_text(
+            document, "## 异常过滤器与协议结果"
+        )
+        for term in ("exception filter", "middleware", "ProblemDetails", "首个失败"):
+            self.assertIn(term, exceptions)
+
+        background = self.section_text(
+            document, "## Hosted Service、任务与消息"
+        )
+        for term in (
+            "IHostedService",
+            "BackgroundService",
+            "Timer",
+            "消息",
+            "Outbox",
+            "取消",
+            "关闭",
+        ):
+            self.assertIn(term, background)
+
+        legacy = self.section_text(document, "## WCF、Windows Service 与 COM")
+        for term in (
+            "WCF",
+            "binding",
+            "endpoint",
+            "Windows Service",
+            "COM",
+            "ProgID/CLSID",
+            "assembly binding",
+        ):
+            self.assertIn(term, legacy)
+
+        compiled = self.section_text(
+            document, "## DLL、EXE、IL 与反编译边界"
+        )
+        for term in (
+            "assembly SHA-256",
+            "TFM",
+            "运行时家族/版本",
+            "架构/RID",
+            "PDB",
+            "反编译器名称、版本、插件、参数与输出哈希",
+            "IL",
+            "ReadyToRun",
+            "single-file",
+            "trimming",
+            "AOT",
+            "混淆",
+            "反编译结果不是原始源码",
+            "不得据此解释开发者意图",
+        ):
+            self.assertIn(term, compiled)
+
+        evidence = self.section_text(document, "## 证据平面与主张上限")
+        expected_rows = {
+            "源码结构": (
+                "statically-supported",
+                "不证明配置生效、assembly 已部署或路径已执行",
+            ),
+            "反编译/IL 派生结构": (
+                "statically-supported",
+                "不等同原始源码，不证明符号、意图或运行路径",
+            ),
+            "配置与部署装配事实": (
+                "observed",
+                "不证明请求经过该配置或组件",
+            ),
+            "已关联运行行为": (
+                "runtime-confirmed",
+                "只限绑定版本、部署、配置、角色、输入和时间窗的场景",
+            ),
+        }
+        observed_rows = {}
+        for line in evidence.splitlines():
+            match = re.fullmatch(
+                r"\| ([^|]+) \| `([^`]+)` \| [^|]+ \| ([^|]+) \|", line
+            )
+            if match and match.group(1).strip() in expected_rows:
+                observed_rows[match.group(1).strip()] = (
+                    match.group(2).strip(),
+                    match.group(3).strip(),
+                )
+        self.assertEqual(expected_rows, observed_rows)
+
+        for contract in (
+            "所有具体技术与拓扑都是条件分支",
+            "不得把 IIS、Kestrel、ASP.NET Core、EF Core、消息系统、WCF 或 COM 写成必经层",
+            "运行、日志、数据库、调试与外部消息操作必须分别授权",
+            "绑定当前 `ART-G0-AUTH` 且 `verdict` 为 `pass`",
+        ):
+            self.assertIn(contract, document)
+
+        trace, node_ids, link_rows = self.parse_registered_typed_trace(
+            document, "## 纵向追踪示例"
+        )
+        for node_id in (
+            "asset:sample.dotnet-project",
+            "asset:sample.dotnet-assembly",
+            "asset:sample.dotnet-host",
+            "integration:sample.dotnet-http-input",
+            "asset:sample.dotnet-middleware",
+            "asset:sample.dotnet-endpoint",
+            "asset:sample.dotnet-validation",
+            "asset:sample.dotnet-authorization",
+            "asset:sample.dotnet-service",
+            "asset:sample.dotnet-transaction",
+            "data:sample.dotnet-atomic-commit",
+            "asset:sample.dotnet-outbox-relay",
+            "integration:sample.dotnet-message",
+            "asset:sample.dotnet-consumer",
+            "claim:sample.dotnet-later-visible",
+        ):
+            self.assertIn(node_id, node_ids)
+        observed_links = {(row[1], row[2], row[3]) for row in link_rows}
+        expected_links = {
+            ("asset:sample.dotnet-assembly", "derived-from", "asset:sample.dotnet-project"),
+            ("asset:sample.dotnet-host", "derived-from", "asset:sample.dotnet-assembly"),
+            ("integration:sample.dotnet-http-input", "calls", "asset:sample.dotnet-host"),
+            ("asset:sample.dotnet-host", "calls", "asset:sample.dotnet-middleware"),
+            ("asset:sample.dotnet-middleware", "calls", "asset:sample.dotnet-endpoint"),
+            ("asset:sample.dotnet-endpoint", "calls", "asset:sample.dotnet-authorization"),
+            ("asset:sample.dotnet-authorization", "calls", "asset:sample.dotnet-validation"),
+            ("asset:sample.dotnet-validation", "calls", "asset:sample.dotnet-service"),
+            ("asset:sample.dotnet-service", "calls", "asset:sample.dotnet-transaction"),
+            ("asset:sample.dotnet-transaction", "writes", "data:sample.dotnet-atomic-commit"),
+            ("asset:sample.dotnet-outbox-relay", "reads", "data:sample.dotnet-atomic-commit"),
+            ("asset:sample.dotnet-outbox-relay", "emits", "integration:sample.dotnet-message"),
+            ("integration:sample.dotnet-message", "calls", "asset:sample.dotnet-consumer"),
+            ("asset:sample.dotnet-consumer", "supports", "claim:sample.dotnet-later-visible"),
+            ("evidence:sample.dotnet-visible-run", "validates", "claim:sample.dotnet-later-visible"),
+        }
+        self.assertTrue(expected_links.issubset(observed_links))
+        self.assert_registered_trace_path(
+            link_rows,
+            "integration:sample.dotnet-http-input",
+            "claim:sample.dotnet-later-visible",
+        )
+        self.assertIn("可选分支缺失时保留缺口且不创建占位边", trace)
+        self.assertIn("可见结果由独立运行证据验证", trace)
+
+    def test_data_messaging_and_infrastructure_guide_contract(self):
+        path = STACK_DOCUMENTS["data-messaging-and-infrastructure"]
+        self.assertTrue(path.is_file(), f"missing infrastructure guide: {path}")
+        guide = self.read_guide()
+        self.assertIn(f"]({path.relative_to(GUIDE_ROOT).as_posix()})", guide)
+        document = self.read_stack_document("data-messaging-and-infrastructure")
+
+        maturity_declarations = [
+            line.strip()
+            for line in document.splitlines()
+            if line.strip().removeprefix("**").startswith("证据成熟度：")
+        ]
+        self.assertEqual(["**证据成熟度：`proposed`**"], maturity_declarations)
+        self.assert_one_nonblank_applicability_declaration(document)
+        self.assertNotIn("/Users/", document)
+        self.assertNotRegex(document, r"(?i)\b(?:TODO|TBD|FIXME)\b|待补(?:充|全)")
+
+        for section_name in REQUIRED_INFRASTRUCTURE_SECTIONS:
+            with self.subTest(section=section_name):
+                section = self.section_text(document, f"## {section_name}")
+                substantive_lines = [
+                    line
+                    for line in section.splitlines()[1:]
+                    if line.strip() and not line.startswith("#")
+                ]
+                self.assertGreaterEqual(
+                    len(substantive_lines),
+                    2,
+                    f"thin infrastructure section: {section_name}",
+                )
+
+        component = self.section_text(document, "## 组件记录契约")
+        fields = [
+            match.group(1)
+            for line in component.splitlines()
+            if (match := re.fullmatch(r"\| `([^`]+)` \| [^|]+ \|", line))
+        ]
+        self.assertEqual(
+            [
+                "component ID",
+                "owner",
+                "version",
+                "namespace/tenant",
+                "schema",
+                "readers",
+                "writers",
+                "consistency",
+                "ordering",
+                "idempotency",
+                "retry",
+                "retention",
+                "encryption",
+                "backup",
+                "restore",
+                "observability",
+                "failure effect",
+            ],
+            fields,
+        )
+        self.assertIn("每个实际发现的组件都必须逐项记录", component)
+        self.assertIn("未知值写 `unknown` 并附验证缺口", component)
+
+        section_terms = {
+            "## 关系型数据库与 NoSQL": (
+                "关系型数据库",
+                "NoSQL",
+                "schema/catalog",
+                "读者",
+                "写者",
+                "迁移",
+                "复制",
+            ),
+            "## 缓存": (
+                "key",
+                "TTL",
+                "cache-aside",
+                "失效",
+                "租户",
+                "提交",
+                "回填",
+            ),
+            "## 搜索与索引": (
+                "索引 schema",
+                "文档 ID",
+                "刷新",
+                "别名",
+                "权限过滤",
+                "重建",
+            ),
+            "## 消息与 Outbox/Inbox": (
+                "Outbox",
+                "Inbox",
+                "ack/commit",
+                "顺序",
+                "幂等",
+                "死信",
+                "重复",
+            ),
+            "## 调度任务": (
+                "调度注册",
+                "时区",
+                "leader/lock",
+                "misfire",
+                "并发",
+                "运行记录",
+            ),
+            "## 文件与对象存储交换": (
+                "对象 key/文件路径",
+                "内容哈希",
+                "临时名",
+                "原子重命名",
+                "完成标记",
+                "重复导入",
+            ),
+            "## 第三方集成与回调": (
+                "第三方回调",
+                "签名校验",
+                "重放窗口",
+                "关联 ID",
+                "幂等",
+                "终态",
+            ),
+            "## 网关": ("路由", "认证", "限流", "重试", "超时", "版本"),
+            "## 容器与编排平台": (
+                "image digest",
+                "revision",
+                "副本",
+                "滚动发布",
+                "readiness",
+                "网络策略",
+            ),
+            "## 秘密引用与配置边界": (
+                "秘密引用",
+                "不得读取或保存秘密值",
+                "配置存在",
+                "实际注入",
+            ),
+            "## 可观测性": (
+                "trace",
+                "日志",
+                "指标",
+                "关联 ID",
+                "采样",
+                "首个失败",
+            ),
+            "## 备份与恢复": (
+                "备份存在",
+                "恢复演练",
+                "RPO",
+                "RTO",
+                "完整性",
+            ),
+        }
+        for heading, terms in section_terms.items():
+            section = self.section_text(document, heading)
+            for term in terms:
+                with self.subTest(section=heading, term=term):
+                    self.assertIn(term, section)
+
+        config = self.section_text(document, "## 配置存在与部署行为")
+        expected_rows = {
+            "源码/配置文件中的组件声明": (
+                "statically-supported",
+                "不证明组件已部署、已连接或被调用",
+            ),
+            "控制面/部署清单中的装配事实": (
+                "observed",
+                "不证明运行实例健康或业务流量到达",
+            ),
+            "已关联运行观测": (
+                "runtime-confirmed",
+                "只限绑定部署、配置、输入和时间窗的行为",
+            ),
+        }
+        observed_rows = {}
+        for line in config.splitlines():
+            match = re.fullmatch(
+                r"\| ([^|]+) \| `([^`]+)` \| [^|]+ \| ([^|]+) \|", line
+            )
+            if match and match.group(1).strip() in expected_rows:
+                observed_rows[match.group(1).strip()] = (
+                    match.group(2).strip(),
+                    match.group(3).strip(),
+                )
+        self.assertEqual(expected_rows, observed_rows)
+        for contract in (
+            "配置存在不得直接声称组件已经部署或产生业务行为",
+            "所有组件类别和拓扑都按实际证据条件化",
+            "不得把数据库、缓存、搜索、消息、任务、对象存储、网关或容器平台写成必经层",
+            "Outbox/Inbox、调度、缓存失效、搜索索引、文件交换和第三方回调都必须从触发到终态逐段取证",
+        ):
+            self.assertIn(contract, document)
+
+        trace, node_ids, link_rows = self.parse_registered_typed_trace(
+            document, "## 基础设施链路示例"
+        )
+        for node_id in (
+            "data:sample.infra-atomic-business-outbox",
+            "asset:sample.infra-outbox-relay",
+            "integration:sample.infra-message",
+            "asset:sample.infra-consumer",
+            "data:sample.infra-inbox-record",
+            "data:sample.infra-search-document",
+            "claim:sample.infra-later-visible",
+        ):
+            self.assertIn(node_id, node_ids)
+        observed_links = {(row[1], row[2], row[3]) for row in link_rows}
+        expected_links = {
+            ("asset:sample.infra-outbox-relay", "reads", "data:sample.infra-atomic-business-outbox"),
+            ("asset:sample.infra-outbox-relay", "emits", "integration:sample.infra-message"),
+            ("integration:sample.infra-message", "calls", "asset:sample.infra-consumer"),
+            ("asset:sample.infra-consumer", "writes", "data:sample.infra-inbox-record"),
+            ("asset:sample.infra-consumer", "writes", "data:sample.infra-search-document"),
+            ("data:sample.infra-search-document", "supports", "claim:sample.infra-later-visible"),
+            ("evidence:sample.infra-visible-run", "validates", "claim:sample.infra-later-visible"),
+        }
+        self.assertTrue(expected_links.issubset(observed_links))
+        self.assert_registered_trace_path(
+            link_rows,
+            "data:sample.infra-atomic-business-outbox",
+            "claim:sample.infra-later-visible",
+        )
+        self.assertIn("链路只示范已发现分支，不规定通用拓扑", trace)
+        self.assertIn("可见结果由独立运行证据验证", trace)
 
     def test_access_tracks_have_the_exact_substantive_section_contract(self):
         maturity_pattern = re.compile(r"^\*\*证据成熟度：`([^`]+)`\*\*$")
