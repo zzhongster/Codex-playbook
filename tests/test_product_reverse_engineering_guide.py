@@ -353,9 +353,7 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
     def test_phase_5_allows_a_governed_static_only_branch(self):
         document = self.read_foundation_document("end-to-end-workflow")
         phase_5 = self.section_text(document, "### Phase 5")
-        static_branch = self.section_text(
-            phase_5, "##### 无运行授权的静态分支"
-        )
+        static_branch = self.section_text(phase_5, "##### 非运行分支")
         for permitted_reason in (
             "授权未覆盖运行",
             "合法环境不可用",
@@ -381,6 +379,38 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         phase_5_exit_gate = self.section_text(phase_5, "#### 退出门禁")
         self.assertIn("运行分支", phase_5_exit_gate)
         self.assertIn("静态分支", phase_5_exit_gate)
+
+    def test_phase_5_scopes_runtime_actions_to_the_runtime_branch(self):
+        document = self.read_foundation_document("end-to-end-workflow")
+        phase_5 = self.section_text(document, "### Phase 5")
+        action_section = self.section_text(phase_5, "#### 执行动作")
+        action_lines = action_section.splitlines()
+        runtime_heading = "##### 运行分支"
+        non_runtime_heading = "##### 非运行分支"
+
+        self.assertEqual(1, action_lines.count(runtime_heading))
+        self.assertEqual(1, action_lines.count(non_runtime_heading))
+        runtime_position = action_lines.index(runtime_heading)
+        non_runtime_position = action_lines.index(non_runtime_heading)
+        self.assertLess(runtime_position, non_runtime_position)
+
+        common_actions = "\n".join(action_lines[1:runtime_position])
+        self.assertIn("先选择并记录一个分支", common_actions)
+        runtime_branch = self.section_text(action_section, runtime_heading)
+        non_runtime_branch = self.section_text(action_section, non_runtime_heading)
+        for runtime_action in (
+            "执行最小只读或低副作用探针",
+            "采集用户可见结果",
+            "重复关键实验",
+            "清理核对",
+        ):
+            with self.subTest(runtime_action=runtime_action):
+                self.assertNotIn(runtime_action, common_actions)
+                self.assertIn(runtime_action, runtime_branch)
+                self.assertNotIn(runtime_action, non_runtime_branch)
+
+        self.assertRegex(runtime_branch, r"(?m)^1\. \S")
+        self.assertRegex(non_runtime_branch, r"(?m)^1\. \S")
 
     def test_phase_8_maps_every_supported_project_purpose(self):
         document = self.read_foundation_document("end-to-end-workflow")
