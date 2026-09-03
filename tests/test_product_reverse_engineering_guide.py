@@ -9501,6 +9501,24 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             }
             self.assertTrue(evidence_refs)
             self.assertTrue(evidence_refs.issubset(GJPERP_CASE_SOURCES))
+        id_statuses = {row["object_id"]: row["claim_status"] for row in id_rows}
+        self.assertEqual(
+            {
+                "capability:gjperp.dynamic-menu-dispatch": "inferred",
+                "interaction:gjperp.menu-action-open": "unsupported",
+                "code:gjperp.client-data-boundary": "inferred",
+                "integration:gjperp.middleware-call": "inferred",
+                "data:gjperp.persisted-field-transition": "inferred",
+                "claim:gjperp.unplayed-joint-ui-action": "unsupported",
+            },
+            id_statuses,
+        )
+        stable_id_section = self.section_text(document, "## 稳定 ID")
+        self.assertIn("脱敏示例 ID，不是对象级产品事实", stable_id_section)
+        self.assertIn(
+            "Phase 2 解析器执行不等于 UI 行为已观察",
+            stable_id_section,
+        )
 
         chain_rows = self.markdown_table(document, "## 纵向证据链")
         self.assertGreaterEqual(len(chain_rows), 2)
@@ -9526,12 +9544,51 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
             self.assertTrue(evidence_refs)
             self.assertTrue(evidence_refs.issubset(GJPERP_CASE_SOURCES))
             self.assertTrue(row["boundary"].strip())
+        chains_by_id = {row["chain_id"]: row for row in chain_rows}
+        candidate_chain = chains_by_id["trace:gjperp.menu-to-persistence"]
+        self.assertEqual("inferred", candidate_chain["claim_status"])
+        self.assertIn("脱敏方法示例/候选链", candidate_chain["ordered_path"])
+        self.assertIn("没有对象级逐边闭合证据", candidate_chain["boundary"])
+        safe_clone_chain = chains_by_id[
+            "trace:gjperp.action-to-reversible-state"
+        ]
+        self.assertEqual("runtime-confirmed", safe_clone_chain["claim_status"])
+        self.assertIn("不确认任何未执行 UI", safe_clone_chain["boundary"])
 
         state_rows = self.markdown_table(document, "## 证据状态")
         self.assertEqual(
             {"claim_status", "meaning", "case_rule"}, set(state_rows[0])
         )
         self.assertEqual(CLAIM_STATUSES, {row["claim_status"] for row in state_rows})
+
+    def test_gjperp_case_narrows_executed_freeze_facts_from_guide_recommendations(self):
+        document = self.read_case_study("gjperp-delphi-erp")
+        section = self.section_text(document, "## 覆盖与冻结")
+        for contract in (
+            "本项目已执行且来源直接支持的冻结事实仅限于",
+            "summary SHA-256",
+            "父阶段引用冻结子事实",
+            "不重新解释子阶段记录",
+            "输入身份和输出白名单属于本指南的 `proposed` 通用建议",
+            "本页来源清单不能证明 gjpERP 已在所有阶段执行这些控制",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, section)
+        self.assertNotIn("子阶段发布确定性输出白名单、输入身份", section)
+
+    def test_readme_validation_scope_includes_case_studies(self):
+        validation = self.section_text(self.read_guide(), "## 验证")
+        for contract in (
+            "案例研究",
+            "章节结构",
+            "`source:*` 闭包",
+            "Git blob OID",
+            "计数、Phase、日期",
+            "方法成熟度",
+            "脱敏边界",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, validation)
 
     def test_gjperp_case_methods_stay_within_single_project_maturity(self):
         document = self.read_case_study("gjperp-delphi-erp")

@@ -31,24 +31,26 @@ Phase 2 将源码、DFM 派生文本、数据库目录和脱敏校准引用投�
 
 | chain_id | ordered_path | claim_status | evidence_refs | boundary |
 | --- | --- | --- | --- | --- |
-| `trace:gjperp.menu-to-persistence` | 动态菜单或配置入口 → 窗体与 Action → 事件或例程 → 客户端数据边界 → 中间件方法 → 过程、表与字段 | statically-supported | source:gjperp.reverse-design, source:gjperp.phase2-runtime, source:gjperp.phase3-runtime | 结构链可定位，但未回放的具体按钮、参数和值语义不能升级为运行确认 |
-| `trace:gjperp.action-to-reversible-state` | 授权 UI 动作 → 可见校验或确认 → 保存与状态迁移 → 数据库前后快照 → 重载验证 → 依赖逆序清理 | runtime-confirmed | source:gjperp.phase1-runtime, source:gjperp.phase4-runtime | 只确认已绑定版本、授权场景和一次性副本中的窄行为，不外推到未执行模块 |
+| `trace:gjperp.menu-to-persistence` | 脱敏方法示例/候选链：动态菜单或配置入口 → 窗体与 Action → 事件或例程 → 客户端数据边界 → 中间件方法 → 过程、表与字段 | inferred | source:gjperp.reverse-design, source:gjperp.phase2-runtime, source:gjperp.phase3-runtime | 没有对象级逐边闭合证据；该行只示范调查顺序，任何具体按钮、参数和值语义都需另立证据 |
+| `trace:gjperp.action-to-reversible-state` | 已实际执行且授权的窄场景 → 可见结果 → 数据库前快照 → 数据库后快照 → 重载验证 → 依赖逆序清理 | runtime-confirmed | source:gjperp.phase1-runtime, source:gjperp.phase4-runtime | 仅确认 Phase 1 已实际回放的窄场景及 Phase 4 的克隆安全结果；不确认任何未执行 UI 或其他模块行为 |
 | `trace:gjperp.child-to-parent-freeze` | 子阶段记录 → 子摘要与内容哈希 → 父阶段关系 → 跨模块不变量 → 未支持联合行为 → 冻结边界 | statically-supported | source:gjperp.phase5-trade, source:gjperp.phase6-finance | 父阶段连接冻结事实，不重新解释子阶段，也不把静态一致性改写成联合 UI 已运行 |
 
-链路必须保留每个跃迁的关系类型、证据引用与主张状态。动态分派无法唯一闭合时保留候选或显式 seed，并登记后续验证方法；禁止按短名称选择第一个目标。
+第一行只是脱敏的方法示例与候选调查顺序，不是已经闭合的对象级产品事实。链路必须保留每个跃迁的关系类型、证据引用与主张状态。动态分派无法唯一闭合时保留候选或显式 seed，并登记后续验证方法；禁止按短名称选择第一个目标。
 
 ## 稳定 ID
 
 | object_id | kind | role | claim_status | evidence_refs |
 | --- | --- | --- | --- | --- |
-| `capability:gjperp.dynamic-menu-dispatch` | capability | 将配置驱动入口连接到产品能力 | statically-supported | source:gjperp.reverse-design, source:gjperp.phase3-runtime |
-| `interaction:gjperp.menu-action-open` | interaction | 表示一次有角色与状态边界的可见动作 | observed | source:gjperp.phase2-runtime |
-| `code:gjperp.client-data-boundary` | code | 隔离窗体逻辑与共享数据访问边界 | statically-supported | source:gjperp.phase3-runtime |
-| `integration:gjperp.middleware-call` | integration | 表示客户端到中间件的类型化调用 | statically-supported | source:gjperp.phase3-runtime |
-| `data:gjperp.persisted-field-transition` | data-object | 表示过程、表、字段及状态变化 | runtime-confirmed | source:gjperp.phase1-runtime |
+| `capability:gjperp.dynamic-menu-dispatch` | capability | 候选配置入口与产品能力关系 | inferred | source:gjperp.reverse-design, source:gjperp.phase3-runtime |
+| `interaction:gjperp.menu-action-open` | interaction | 待对象级运行证据支持的可见动作 | unsupported | source:gjperp.phase2-runtime |
+| `code:gjperp.client-data-boundary` | code | 候选窗体逻辑与共享数据访问边界 | inferred | source:gjperp.phase3-runtime |
+| `integration:gjperp.middleware-call` | integration | 候选客户端到中间件调用 | inferred | source:gjperp.phase3-runtime |
+| `data:gjperp.persisted-field-transition` | data-object | 候选过程、表、字段及状态变化 | inferred | source:gjperp.phase1-runtime |
 | `claim:gjperp.unplayed-joint-ui-action` | claim | 保留尚未联合回放的 UI 行为 | unsupported | source:gjperp.phase5-trade, source:gjperp.phase6-finance |
 
-项目内部的图谱 ID 由对象种类与限定逻辑键确定，重命名保留别名，对象消失保留 tombstone，旧 ID 不分配给新对象。公开案例使用上表的脱敏 ID 说明关系，不泄露本地对象键或运行身份。
+上表全部是脱敏示例 ID，不是对象级产品事实。Phase 2 解析器执行不等于 UI 行为已观察；没有对象级来源和运行引用时，菜单动作保持 `unsupported`，其他候选关系保持 `inferred`。
+
+项目内部的图谱 ID 由对象种类与限定逻辑键确定，重命名保留别名，对象消失保留 tombstone，旧 ID 不分配给新对象。公开案例使用上表的脱敏示例说明关系，不泄露本地对象键或运行身份。
 
 ## 证据状态
 
@@ -88,7 +90,9 @@ Phase 4 的窄证据表明源侧无业务变化且一次性副本完成清理，
 
 覆盖表按证据平面分别计算：结构、静态语义、UI 动作、数据对象、运行场景、追踪链和跨模块不变量不能合并成一个百分比。`unsupported` 与 P2 保留在分母中并携带下一步验证，P0/P1 的清零也不表示 P2 语义已经确认。
 
-子阶段发布确定性输出白名单、输入身份、内容哈希和摘要；父阶段只引用冻结子摘要，再增加跨模块关系与边界。做法与[按阶段冻结证据目录](../../../patterns/freeze-phase-scoped-evidence-catalogs.md)一致；动态数据库边的补强原则见[显式登记动态数据库调用](../../../patterns/seed-dynamic-database-calls-explicitly.md)。
+本项目已执行且来源直接支持的冻结事实仅限于：Phase 5 与 Phase 6D 的子阶段表登记 summary SHA-256，父阶段引用冻结子事实，并明确不重新解释子阶段记录；这些来源也保留未运行联合行为的边界。
+
+输入身份和输出白名单属于本指南的 `proposed` 通用建议，应在新项目逐阶段验证；本页来源清单不能证明 gjpERP 已在所有阶段执行这些控制。候选做法见[按阶段冻结证据目录](../../../patterns/freeze-phase-scoped-evidence-catalogs.md)；动态数据库边的补强原则见[显式登记动态数据库调用](../../../patterns/seed-dynamic-database-calls-explicitly.md)。
 
 原始大证据留在受控存储时，Git 中必须有完整内容清单与摘要；“存在哈希”仍不等于有独立签名或外部不可变归档。案例来源明确保留了待独立复核边界，相关风险见[忽略大证据却不提交清单](../../../anti-patterns/ignored-evidence-without-durable-manifest.md)。
 
