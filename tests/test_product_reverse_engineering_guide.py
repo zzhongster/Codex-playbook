@@ -4326,6 +4326,47 @@ class ProductReverseEngineeringGuideTests(unittest.TestCase):
         for policy_term in ("大小写不敏感", "Punycode", "单标签"):
             self.assertIn(policy_term, contributing)
 
+    def test_fixture_safety_parses_host_port_authorities_without_label_overlap(self):
+        fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
+            "fixture_safety_errors"
+        ]
+        unsafe_authorities = {
+            "single-label with port": {"host": "prod-db-01:5432"},
+            "DNS with port": {"hostname": "api.customer.com:443"},
+            "IPv4 with port": {"server": "203.0.114.8:8080"},
+            "bracketed IPv6 with port": {
+                "node": "[2001:4860:4860::8888]:443"
+            },
+            "labeled single-label with port": {
+                "note": "host=prod-db-01:5432"
+            },
+            "labeled server with port": {
+                "note": "server=prod-db-01:5432"
+            },
+            "labeled bracketed IPv6 with port": {
+                "note": "server=[2001:4860:4860::8888]:443"
+            },
+        }
+        for label, mutation in unsafe_authorities.items():
+            with self.subTest(label=label):
+                self.assertTrue(fixture_safety_errors(mutation))
+
+        safe_authorities = {
+            "host": "synthetic-host:5432",
+            "hostname": "api.example.invalid:443",
+            "server": "192.0.2.25:8080",
+            "node": "[2001:db8::25]:443",
+            "peer": "fictional-peer",
+            "note": "host=synthetic-host:5432",
+            "server_note": "synthetic-server:5432",
+            "IPv6_note": "server=[2001:db8::25]:443",
+        }
+        self.assertEqual([], fixture_safety_errors(safe_authorities))
+
+        contributing = self.read_repo_file("CONTRIBUTING.md")
+        self.assertIn("host:port", contributing)
+        self.assertIn("方括号 IPv6", contributing)
+
     def test_fixture_safety_limits_business_checks_to_identity_fields(self):
         fixture_safety_errors = runpy.run_path(str(FIXTURE_SAFETY_PATH))[
             "fixture_safety_errors"

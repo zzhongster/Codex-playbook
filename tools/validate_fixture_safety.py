@@ -73,9 +73,11 @@ _STABLE_ID = re.compile(
     r"[a-z][a-z0-9-]*:[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+)"
 )
 _NETWORK_LABEL = re.compile(
-    r"(?i)\b(?:address|domain|host|hostname|ip|ip-address|node|peer|server)"
-    r"\s*[:=]\s*(?P<target>\[[0-9a-f:]+\]|"
-    r"(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}|[a-z0-9.-]+)"
+    r"(?i)(?<![a-z0-9_-])"
+    r"(?:address|domain|host|hostname|ip|ip-address|node|peer|server)"
+    r"\s*[:=]\s*(?P<target>\[[0-9a-f:]+\](?::[0-9]{1,5})?|"
+    r"(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}|"
+    r"[a-z0-9.-]+(?::[0-9]{1,5})?)"
 )
 _NETWORK_FIELD = re.compile(
     r"(?i)(?:^|[_-])(?:host|hostname|node|peer|server)"
@@ -217,6 +219,27 @@ def _network_identifier_errors(identifier, path, reject_single_label=False):
     return []
 
 
+def _authority_host(value):
+    normalized = value.strip()
+    if not normalized or any(character.isspace() for character in normalized):
+        return None
+    try:
+        authority = urlsplit(f"//{normalized}")
+        authority.port
+    except ValueError:
+        return None
+    if (
+        authority.hostname is None
+        or authority.username is not None
+        or authority.password is not None
+        or authority.path
+        or authority.query
+        or authority.fragment
+    ):
+        return None
+    return authority.hostname
+
+
 def _valid_base64_token(token, require_colon=False):
     try:
         decoded = base64.b64decode(token, validate=True)
@@ -329,16 +352,21 @@ def _string_safety_errors(value, path, path_keys):
             errors.extend(_network_identifier_errors(match.group(0), path))
 
     if path_keys and _NETWORK_FIELD.search(path_keys[-1]):
+        authority_host = _authority_host(normalized_non_url_text)
         errors.extend(
             _network_identifier_errors(
-                normalized_non_url_text, path, reject_single_label=True
+                authority_host or normalized_non_url_text,
+                path,
+                reject_single_label=True,
             )
         )
 
     for match in _NETWORK_LABEL.finditer(non_url_text):
+        target = match.group("target")
+        authority_host = _authority_host(target)
         errors.extend(
             _network_identifier_errors(
-                match.group("target"), path, reject_single_label=True
+                authority_host or target, path, reject_single_label=True
             )
         )
     return errors
