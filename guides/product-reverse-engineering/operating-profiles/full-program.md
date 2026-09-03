@@ -40,7 +40,7 @@ Agent 可执行已授权、输入固定、输出路径受限的任务包和确�
 6. **Wave 5 / Phase 6：** 综合能力、旅程、状态、规则、权限、语义和不变量，完成人工领域复核并计算 G4。
 7. **Wave 6 / Phase 7：** 重算覆盖、处理冲突与 P0/P1 风险，计算 G6。
 8. **Wave 7 / Phase 8：** 先生成目的交付、发布说明、最终 review/delta 内容快照等 Phase 8 内容，再由人签署 `ART-P8-APPROVAL`；随后派生 G7，生成 child/phase 摘要、`ART-P8-ROOT-SUMMARY`、分离式 `ART-P8-FREEZE`，最后单独验证 profile exit。
-9. **Wave 8 / Phase 9：** 对新版本做 delta 影响分析，重开受影响门禁、定向重验并发布新版本，不回写旧冻结。
+9. **Wave 8 / Phase 9：** 依次生成 `ART-P9-DELTA`、影响集合、`ART-P9-REVALIDATION`、`ART-P9-CALIBRATION`、`ART-P9-LEARNING`，最后发布新的 delta/gate/hash/summary 版本；不回写旧冻结。
 
 ## 必需输出
 
@@ -54,7 +54,11 @@ Agent 可执行已授权、输入固定、输出路径受限的任务包和确�
 - **cluster 拆分/冻结台账：** 超出审查容量、混合所有权或分母无界时拆分；child 分母、门禁、哈希和 parent 重建齐全后才冻结。
 - **单向终局产物：** `ART-P8-RELEASE`、`ART-P8-APPROVAL`、`ART-G7-RELEASE`、最终 child/phase 摘要、`ART-P8-ROOT-SUMMARY`、`ART-P8-FREEZE` 和 profile-exit 验证均有独立 ID 与单向依赖。
 
-机器契约中的 `artifact_dag` 是追加式生命周期注册表：`replaced_by` 关系只在后继版本存在后作为独立关系登记，不回写旧产物的已冻结内容；真正的 `inputs` 只能指向已经存在的外部输入或较早产物。重复 concept 必须通过成对替代关系或 parent 链连接，不能复用同一 artifact ID。purpose-delivery 清单还必须保存本次选中的核心 `ART-P8-*` ID/哈希，以及其余四类目的的排除与差异映射。
+机器契约中的 `artifact_dag` 是追加式生命周期注册表：`replaced_by` 关系只在后继版本存在后作为独立关系登记，不回写旧产物的已冻结内容；真正的 `inputs` 只能指向已经存在的外部输入或较早产物。重复 concept 必须通过成对替代关系或 parent 链连接，不能复用同一 artifact ID。
+
+`selected_goal` 必须从 Phase 0 已批准的唯一主要目的复制；下方可执行示例取 `rewrite`。五个条件化 `ART-P8-*` 节点都进入 schedule/DAG，但恰好一个标记 `selected` 并承载 purpose 内容，另外四个只能标记 `excluded`、生成排除/差异映射，禁止伪造未选择目的的业务内容。选中的核心产物先完成，`purpose-delivery` 必须直接引用它和四个排除映射，之后 `ART-P8-APPROVAL` 与 G7 均直接引用选中产物，形成可验证主链。
+
+Phase 9 不是四个布尔开关。`ART-P9-DELTA` 先比较冻结基线与新证据，影响选择再确定最小重跑集合；`ART-P9-REVALIDATION` 保存定向重跑结果和受影响分母。运行分支的每个动作仍需 `ART-P0-AUTH`/G0 覆盖，未授权不得运行；获批静态分支继续携带三项静态产物，最高为 `statically-supported`，不得生成 `runtime-confirmed`。`ART-P9-CALIBRATION` 对照先前预测/置信度和实证结果，`ART-P9-LEARNING` 只形成方法修订与成熟度候选，不直接修改产品主张真值，也不因单项目成功提升成熟度；五项完成后才生成新的控制快照。
 
 ## 允许主张
 
@@ -232,6 +236,11 @@ schedule:
       - artifact:program.delta-ledger.wave0.v00
     outputs:
       - artifact:program.cluster-split-freeze-ledger.phase8.v1
+      - ART-P8-REWRITE
+      - ART-P8-MIGRATION
+      - ART-P8-REPLACEMENT
+      - ART-P8-DUE-DILIGENCE
+      - ART-P8-COMPETITOR
       - artifact:program.purpose-delivery.phase8.v1
       - ART-P8-RELEASE
       - artifact:program.review-cadence.phase8.v04
@@ -252,7 +261,11 @@ schedule:
     activity: Append a post-freeze delta, reopen affected gates, and create new control versions without rewriting the Phase 8 freeze.
     inputs: [ART-P8-FREEZE, artifact:program.profile-exit-verification.phase8.v1]
     outputs:
-      - artifact:program.delta-observation.phase9.v1
+      - ART-P9-DELTA
+      - artifact:program.impact-selection.phase9.v1
+      - ART-P9-REVALIDATION
+      - ART-P9-CALIBRATION
+      - ART-P9-LEARNING
       - artifact:program.delta-ledger.phase9.v02
       - artifact:program.gate-ledger.reopened.v07
       - artifact:program.phase-hash-index.wave8.v08
@@ -283,6 +296,21 @@ required_outputs:
   - output_id: artifact:program.cluster-split-freeze-ledger.phase8.v1
     content_contract: [split-and-child-freeze-decisions]
     incomplete_when: [oversized-cluster-unsplit, child-denominator-unbound, parent-summary-not-rebuilt]
+  - output_id: ART-P8-REWRITE
+    content_contract: [selected-delivery-or-explicit-exclusion-map, no-unselected-purpose-content]
+    incomplete_when: [activation-missing, selected-content-missing, unselected-content-fabricated]
+  - output_id: ART-P8-MIGRATION
+    content_contract: [selected-delivery-or-explicit-exclusion-map, no-unselected-purpose-content]
+    incomplete_when: [activation-missing, selected-content-missing, unselected-content-fabricated]
+  - output_id: ART-P8-REPLACEMENT
+    content_contract: [selected-delivery-or-explicit-exclusion-map, no-unselected-purpose-content]
+    incomplete_when: [activation-missing, selected-content-missing, unselected-content-fabricated]
+  - output_id: ART-P8-DUE-DILIGENCE
+    content_contract: [selected-delivery-or-explicit-exclusion-map, no-unselected-purpose-content]
+    incomplete_when: [activation-missing, selected-content-missing, unselected-content-fabricated]
+  - output_id: ART-P8-COMPETITOR
+    content_contract: [selected-delivery-or-explicit-exclusion-map, no-unselected-purpose-content]
+    incomplete_when: [activation-missing, selected-content-missing, unselected-content-fabricated]
   - output_id: ART-P8-RELEASE
     content_contract: [purpose-and-limit-release-notes]
     incomplete_when: [purpose-missing, limitations-hidden, review-boundary-missing]
@@ -334,6 +362,11 @@ exit_gate:
     - artifact:program.delta-ledger.phase8.v01
     - artifact:program.purpose-delivery.phase8.v1
     - artifact:program.cluster-split-freeze-ledger.phase8.v1
+    - ART-P8-REWRITE
+    - ART-P8-MIGRATION
+    - ART-P8-REPLACEMENT
+    - ART-P8-DUE-DILIGENCE
+    - ART-P8-COMPETITOR
     - ART-P8-RELEASE
     - ART-P8-APPROVAL
     - ART-G7-RELEASE
@@ -423,32 +456,63 @@ full_program_controls:
     reopen_affected_gates: true
     targeted_revalidation: true
     final_phase8_snapshot_before_freeze: true
+  selected_goal: rewrite
+  phase9_revalidation:
+    runtime:
+      authorization_required: true
+      authorization_artifact: ART-P0-AUTH
+      per_action_authorization: true
+      result_artifact: ART-P9-REVALIDATION
+    approved-static:
+      required_artifacts: [ART-P5-STATIC, ART-P5-RUNTIME-GAP, ART-P5-STATIC-ACCEPTANCE]
+      claim_ceiling: statically-supported
+      forbidden_status: runtime-confirmed
+      result_artifact: ART-P9-REVALIDATION
+    learning:
+      may_update_method_revision_candidate: true
+      may_update_product_truth: false
+      maturity_requires_independent_evidence: true
+  phase9_required_outputs:
+    ART-P9-DELTA: [frozen-baseline-and-new-evidence, affected-object-and-link-candidates, unaffected-rationale]
+    ART-P9-REVALIDATION: [selected-impact-set, targeted-rerun-results-or-static-gap, affected-denominator-recalculation]
+    ART-P9-CALIBRATION: [prior-prediction-and-confidence, empirical-outcome, false-positive-and-false-negative-analysis, sample-boundary]
+    ART-P9-LEARNING: [method-revision-candidate, counterexamples-and-evidence-scope, maturity-candidate-not-product-truth]
   purpose_outputs:
     rewrite:
       output_artifact: ART-P8-REWRITE
       required_content: [as-is-to-be-traces, preserve-correct-drop-or-research-decisions, migration-impact, executable-acceptance]
       exclusion_map: [migration, replacement, acquisition-due-diligence, competitor-research]
       difference_map: [legacy-behavior-vs-target-requirement, accepted-vs-rejected-differences]
+      activation_condition: selected_goal=rewrite
+      inactive_content: exclusion-map-only
     migration:
       output_artifact: ART-P8-MIGRATION
       required_content: [source-to-target-identity, field-state-history-conversion, reconciliation-cutover-coexistence, rollback-ownership]
       exclusion_map: [rewrite, replacement, acquisition-due-diligence, competitor-research]
       difference_map: [source-vs-target-semantics, convertible-vs-exception-records]
+      activation_condition: selected_goal=migration
+      inactive_content: exclusion-map-only
     replacement:
       output_artifact: ART-P8-REPLACEMENT
       required_content: [capability-fit, behavioral-gaps, workarounds, conversion-and-exit-cost]
       exclusion_map: [rewrite, migration, acquisition-due-diligence, competitor-research]
       difference_map: [required-vs-candidate-behavior, accepted-vs-blocking-gaps]
+      activation_condition: selected_goal=replacement
+      inactive_content: exclusion-map-only
     acquisition-due-diligence:
       output_artifact: ART-P8-DUE-DILIGENCE
       required_content: [product-technology-data-dependency-facts, rights-boundaries, valuation-and-integration-risks, evidence-gaps-and-owners]
       exclusion_map: [rewrite, migration, replacement, competitor-research]
       difference_map: [represented-vs-evidenced-facts, known-vs-unverified-risk]
+      activation_condition: selected_goal=acquisition-due-diligence
+      inactive_content: exclusion-map-only
     competitor-research:
       output_artifact: ART-P8-COMPETITOR
       required_content: [bounded-observations, comparable-capabilities-and-journeys, differentiators-and-hypotheses, unverified-boundaries]
       exclusion_map: [rewrite, migration, replacement, acquisition-due-diligence]
       difference_map: [observed-difference-vs-interpretation, comparable-vs-noncomparable-scope]
+      activation_condition: selected_goal=competitor-research
+      inactive_content: exclusion-map-only
   cluster_policy:
     oversized_when: [review_capacity_exceeded, mixed_ownership, unbounded_denominator]
     split_by: [business-domain, runtime-identity, tenant-role, data-ownership, failure-boundary]
@@ -490,23 +554,32 @@ full_program_controls:
       - {sequence: 32, artifact_id: artifact:program.phase-hash-index.wave6.v06, concept_id: artifact-concept:program.phase-hash-index, produced_in: wave-6-coverage-conflict, inputs: [artifact:program.phase-hash-index.wave5.v05, artifact:program.coverage-audit.phase7.v1, artifact:program.review-cadence.wave6.v03, artifact:program.gate-ledger.g6.v05], predecessor_id: artifact:program.phase-hash-index.wave5.v05, predecessor_relation: replaces, replaced_by: artifact:program.phase-hash-index.phase8.v07, lifecycle: replaced, terminal_stage: pre-terminal}
       - {sequence: 33, artifact_id: artifact:program.phase-summary-index.wave6.v06, concept_id: artifact-concept:program.phase-summary-index, produced_in: wave-6-coverage-conflict, inputs: [artifact:program.phase-summary-index.wave5.v05, artifact:program.phase-hash-index.wave6.v06, artifact:program.gate-ledger.g6.v05], predecessor_id: artifact:program.phase-summary-index.wave5.v05, predecessor_relation: parent, replaced_by: null, lifecycle: active, terminal_stage: pre-terminal}
       - {sequence: 34, artifact_id: artifact:program.cluster-split-freeze-ledger.phase8.v1, concept_id: artifact-concept:program.cluster-freeze-ledger, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.coverage-audit.phase7.v1, artifact:program.phase-summary-index.wave6.v06], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase8-content}
-      - {sequence: 35, artifact_id: artifact:program.purpose-delivery.phase8.v1, concept_id: artifact-concept:program.purpose-delivery, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.coverage-audit.phase7.v1, artifact:program.phase-summary-index.wave6.v06, artifact:program.cluster-split-freeze-ledger.phase8.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase8-content}
-      - {sequence: 36, artifact_id: ART-P8-RELEASE, concept_id: artifact-concept:program.release-notes, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.purpose-delivery.phase8.v1, artifact:program.coverage-audit.phase7.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase8-content}
-      - {sequence: 37, artifact_id: artifact:program.review-cadence.phase8.v04, concept_id: artifact-concept:program.review-cadence, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.review-cadence.wave6.v03, ART-P8-RELEASE], predecessor_id: artifact:program.review-cadence.wave6.v03, predecessor_relation: replaces, replaced_by: null, lifecycle: active, terminal_stage: phase8-content}
-      - {sequence: 38, artifact_id: artifact:program.delta-ledger.phase8.v01, concept_id: artifact-concept:program.delta-ledger, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.delta-ledger.wave0.v00, ART-P8-RELEASE], predecessor_id: artifact:program.delta-ledger.wave0.v00, predecessor_relation: replaces, replaced_by: artifact:program.delta-ledger.phase9.v02, lifecycle: replaced, terminal_stage: phase8-content}
-      - {sequence: 39, artifact_id: ART-P8-APPROVAL, concept_id: artifact-concept:program.human-release-approval, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.purpose-delivery.phase8.v1, ART-P8-RELEASE, artifact:program.cluster-split-freeze-ledger.phase8.v1, artifact:program.review-cadence.phase8.v04, artifact:program.delta-ledger.phase8.v01, artifact:program.gate-ledger.g6.v05], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: human-approval}
-      - {sequence: 40, artifact_id: ART-G7-RELEASE, concept_id: artifact-concept:program.derived-g7, produced_in: wave-7-freeze-delivery, inputs: [ART-P8-APPROVAL, ART-P8-RELEASE, artifact:program.purpose-delivery.phase8.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: derived-g7}
-      - {sequence: 41, artifact_id: artifact:program.gate-ledger.g7.v06, concept_id: artifact-concept:program.gate-ledger, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.gate-ledger.g6.v05, ART-G7-RELEASE], predecessor_id: artifact:program.gate-ledger.g6.v05, predecessor_relation: replaces, replaced_by: artifact:program.gate-ledger.reopened.v07, lifecycle: replaced, terminal_stage: child-phase-summaries}
-      - {sequence: 42, artifact_id: artifact:program.phase-hash-index.phase8.v07, concept_id: artifact-concept:program.phase-hash-index, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.phase-hash-index.wave6.v06, artifact:program.cluster-split-freeze-ledger.phase8.v1, artifact:program.purpose-delivery.phase8.v1, ART-P8-RELEASE, artifact:program.review-cadence.phase8.v04, artifact:program.delta-ledger.phase8.v01, ART-P8-APPROVAL, ART-G7-RELEASE, artifact:program.gate-ledger.g7.v06], predecessor_id: artifact:program.phase-hash-index.wave6.v06, predecessor_relation: replaces, replaced_by: artifact:program.phase-hash-index.wave8.v08, lifecycle: replaced, terminal_stage: child-phase-summaries}
-      - {sequence: 43, artifact_id: artifact:program.phase-summary-index.phase8.v07, concept_id: artifact-concept:program.phase-summary-index, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.phase-summary-index.wave6.v06, artifact:program.phase-hash-index.phase8.v07, artifact:program.gate-ledger.g7.v06, ART-G7-RELEASE], predecessor_id: artifact:program.phase-summary-index.wave6.v06, predecessor_relation: parent, replaced_by: null, lifecycle: active, terminal_stage: child-phase-summaries}
-      - {sequence: 44, artifact_id: ART-P8-ROOT-SUMMARY, concept_id: artifact-concept:program.root-summary, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.phase-summary-index.phase8.v07, ART-G7-RELEASE, artifact:program.purpose-delivery.phase8.v1, ART-P8-RELEASE, artifact:program.gate-ledger.g7.v06], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: root-summary}
-      - {sequence: 45, artifact_id: ART-P8-FREEZE, concept_id: artifact-concept:program.detached-freeze, produced_in: wave-7-freeze-delivery, inputs: [ART-P8-ROOT-SUMMARY, artifact:program.phase-hash-index.phase8.v07, artifact:program.phase-summary-index.phase8.v07, artifact:program.review-cadence.phase8.v04, artifact:program.gate-ledger.g7.v06, artifact:program.delta-ledger.phase8.v01, artifact:program.cluster-split-freeze-ledger.phase8.v1, artifact:program.purpose-delivery.phase8.v1, ART-P8-RELEASE, ART-P8-APPROVAL, ART-G7-RELEASE], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: detached-freeze}
-      - {sequence: 46, artifact_id: artifact:program.profile-exit-verification.phase8.v1, concept_id: artifact-concept:program.profile-exit-verification, produced_in: wave-7-freeze-delivery, inputs: [ART-G7-RELEASE, ART-P8-ROOT-SUMMARY, ART-P8-FREEZE], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: profile-exit-verification}
-      - {sequence: 47, artifact_id: artifact:program.delta-observation.phase9.v1, concept_id: artifact-concept:program.delta-observation, produced_in: wave-8-delta-calibration, inputs: [ART-P8-FREEZE, artifact:program.profile-exit-verification.phase8.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
-      - {sequence: 48, artifact_id: artifact:program.delta-ledger.phase9.v02, concept_id: artifact-concept:program.delta-ledger, produced_in: wave-8-delta-calibration, inputs: [artifact:program.delta-ledger.phase8.v01, artifact:program.delta-observation.phase9.v1, ART-P8-FREEZE], predecessor_id: artifact:program.delta-ledger.phase8.v01, predecessor_relation: replaces, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
-      - {sequence: 49, artifact_id: artifact:program.gate-ledger.reopened.v07, concept_id: artifact-concept:program.gate-ledger, produced_in: wave-8-delta-calibration, inputs: [artifact:program.gate-ledger.g7.v06, artifact:program.delta-ledger.phase9.v02], predecessor_id: artifact:program.gate-ledger.g7.v06, predecessor_relation: replaces, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
-      - {sequence: 50, artifact_id: artifact:program.phase-hash-index.wave8.v08, concept_id: artifact-concept:program.phase-hash-index, produced_in: wave-8-delta-calibration, inputs: [artifact:program.phase-hash-index.phase8.v07, artifact:program.delta-ledger.phase9.v02, artifact:program.gate-ledger.reopened.v07], predecessor_id: artifact:program.phase-hash-index.phase8.v07, predecessor_relation: replaces, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
-      - {sequence: 51, artifact_id: artifact:program.phase-summary-index.wave8.v08, concept_id: artifact-concept:program.phase-summary-index, produced_in: wave-8-delta-calibration, inputs: [artifact:program.phase-summary-index.phase8.v07, artifact:program.phase-hash-index.wave8.v08, artifact:program.gate-ledger.reopened.v07], predecessor_id: artifact:program.phase-summary-index.phase8.v07, predecessor_relation: parent, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
+      - {sequence: 35, artifact_id: ART-P8-REWRITE, concept_id: artifact-concept:program.purpose-rewrite, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.coverage-audit.phase7.v1, artifact:program.phase-summary-index.wave6.v06, artifact:program.cluster-split-freeze-ledger.phase8.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase8-content, activation_condition: selected_goal=rewrite, activation: selected, content_mode: purpose-content}
+      - {sequence: 36, artifact_id: ART-P8-MIGRATION, concept_id: artifact-concept:program.purpose-migration, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.coverage-audit.phase7.v1, artifact:program.phase-summary-index.wave6.v06, artifact:program.cluster-split-freeze-ledger.phase8.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase8-content, activation_condition: selected_goal=migration, activation: excluded, content_mode: exclusion-map-only}
+      - {sequence: 37, artifact_id: ART-P8-REPLACEMENT, concept_id: artifact-concept:program.purpose-replacement, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.coverage-audit.phase7.v1, artifact:program.phase-summary-index.wave6.v06, artifact:program.cluster-split-freeze-ledger.phase8.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase8-content, activation_condition: selected_goal=replacement, activation: excluded, content_mode: exclusion-map-only}
+      - {sequence: 38, artifact_id: ART-P8-DUE-DILIGENCE, concept_id: artifact-concept:program.purpose-due-diligence, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.coverage-audit.phase7.v1, artifact:program.phase-summary-index.wave6.v06, artifact:program.cluster-split-freeze-ledger.phase8.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase8-content, activation_condition: selected_goal=acquisition-due-diligence, activation: excluded, content_mode: exclusion-map-only}
+      - {sequence: 39, artifact_id: ART-P8-COMPETITOR, concept_id: artifact-concept:program.purpose-competitor, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.coverage-audit.phase7.v1, artifact:program.phase-summary-index.wave6.v06, artifact:program.cluster-split-freeze-ledger.phase8.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase8-content, activation_condition: selected_goal=competitor-research, activation: excluded, content_mode: exclusion-map-only}
+      - {sequence: 40, artifact_id: artifact:program.purpose-delivery.phase8.v1, concept_id: artifact-concept:program.purpose-delivery, produced_in: wave-7-freeze-delivery, inputs: [ART-P8-REWRITE, ART-P8-MIGRATION, ART-P8-REPLACEMENT, ART-P8-DUE-DILIGENCE, ART-P8-COMPETITOR], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase8-content}
+      - {sequence: 41, artifact_id: ART-P8-RELEASE, concept_id: artifact-concept:program.release-notes, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.purpose-delivery.phase8.v1, ART-P8-REWRITE, artifact:program.coverage-audit.phase7.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase8-content}
+      - {sequence: 42, artifact_id: artifact:program.review-cadence.phase8.v04, concept_id: artifact-concept:program.review-cadence, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.review-cadence.wave6.v03, ART-P8-RELEASE], predecessor_id: artifact:program.review-cadence.wave6.v03, predecessor_relation: replaces, replaced_by: null, lifecycle: active, terminal_stage: phase8-content}
+      - {sequence: 43, artifact_id: artifact:program.delta-ledger.phase8.v01, concept_id: artifact-concept:program.delta-ledger, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.delta-ledger.wave0.v00, ART-P8-RELEASE], predecessor_id: artifact:program.delta-ledger.wave0.v00, predecessor_relation: replaces, replaced_by: artifact:program.delta-ledger.phase9.v02, lifecycle: replaced, terminal_stage: phase8-content}
+      - {sequence: 44, artifact_id: ART-P8-APPROVAL, concept_id: artifact-concept:program.human-release-approval, produced_in: wave-7-freeze-delivery, inputs: [ART-P8-REWRITE, artifact:program.purpose-delivery.phase8.v1, ART-P8-RELEASE, artifact:program.cluster-split-freeze-ledger.phase8.v1, artifact:program.review-cadence.phase8.v04, artifact:program.delta-ledger.phase8.v01, artifact:program.gate-ledger.g6.v05], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: human-approval}
+      - {sequence: 45, artifact_id: ART-G7-RELEASE, concept_id: artifact-concept:program.derived-g7, produced_in: wave-7-freeze-delivery, inputs: [ART-P8-REWRITE, ART-P8-APPROVAL, ART-P8-RELEASE, artifact:program.purpose-delivery.phase8.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: derived-g7}
+      - {sequence: 46, artifact_id: artifact:program.gate-ledger.g7.v06, concept_id: artifact-concept:program.gate-ledger, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.gate-ledger.g6.v05, ART-G7-RELEASE], predecessor_id: artifact:program.gate-ledger.g6.v05, predecessor_relation: replaces, replaced_by: artifact:program.gate-ledger.reopened.v07, lifecycle: replaced, terminal_stage: child-phase-summaries}
+      - {sequence: 47, artifact_id: artifact:program.phase-hash-index.phase8.v07, concept_id: artifact-concept:program.phase-hash-index, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.phase-hash-index.wave6.v06, artifact:program.cluster-split-freeze-ledger.phase8.v1, ART-P8-REWRITE, ART-P8-MIGRATION, ART-P8-REPLACEMENT, ART-P8-DUE-DILIGENCE, ART-P8-COMPETITOR, artifact:program.purpose-delivery.phase8.v1, ART-P8-RELEASE, artifact:program.review-cadence.phase8.v04, artifact:program.delta-ledger.phase8.v01, ART-P8-APPROVAL, ART-G7-RELEASE, artifact:program.gate-ledger.g7.v06], predecessor_id: artifact:program.phase-hash-index.wave6.v06, predecessor_relation: replaces, replaced_by: artifact:program.phase-hash-index.wave8.v08, lifecycle: replaced, terminal_stage: child-phase-summaries}
+      - {sequence: 48, artifact_id: artifact:program.phase-summary-index.phase8.v07, concept_id: artifact-concept:program.phase-summary-index, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.phase-summary-index.wave6.v06, artifact:program.phase-hash-index.phase8.v07, artifact:program.gate-ledger.g7.v06, ART-G7-RELEASE], predecessor_id: artifact:program.phase-summary-index.wave6.v06, predecessor_relation: parent, replaced_by: null, lifecycle: active, terminal_stage: child-phase-summaries}
+      - {sequence: 49, artifact_id: ART-P8-ROOT-SUMMARY, concept_id: artifact-concept:program.root-summary, produced_in: wave-7-freeze-delivery, inputs: [artifact:program.phase-summary-index.phase8.v07, ART-G7-RELEASE, ART-P8-REWRITE, artifact:program.purpose-delivery.phase8.v1, ART-P8-RELEASE, artifact:program.gate-ledger.g7.v06], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: root-summary}
+      - {sequence: 50, artifact_id: ART-P8-FREEZE, concept_id: artifact-concept:program.detached-freeze, produced_in: wave-7-freeze-delivery, inputs: [ART-P8-ROOT-SUMMARY, artifact:program.phase-hash-index.phase8.v07, artifact:program.phase-summary-index.phase8.v07, artifact:program.review-cadence.phase8.v04, artifact:program.gate-ledger.g7.v06, artifact:program.delta-ledger.phase8.v01, artifact:program.cluster-split-freeze-ledger.phase8.v1, ART-P8-REWRITE, ART-P8-MIGRATION, ART-P8-REPLACEMENT, ART-P8-DUE-DILIGENCE, ART-P8-COMPETITOR, artifact:program.purpose-delivery.phase8.v1, ART-P8-RELEASE, ART-P8-APPROVAL, ART-G7-RELEASE], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: detached-freeze}
+      - {sequence: 51, artifact_id: artifact:program.profile-exit-verification.phase8.v1, concept_id: artifact-concept:program.profile-exit-verification, produced_in: wave-7-freeze-delivery, inputs: [ART-G7-RELEASE, ART-P8-ROOT-SUMMARY, ART-P8-FREEZE], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: profile-exit-verification}
+      - {sequence: 52, artifact_id: ART-P9-DELTA, concept_id: artifact-concept:program.phase9-delta, produced_in: wave-8-delta-calibration, inputs: [ART-P8-FREEZE, artifact:program.profile-exit-verification.phase8.v1], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
+      - {sequence: 53, artifact_id: artifact:program.impact-selection.phase9.v1, concept_id: artifact-concept:program.phase9-impact-selection, produced_in: wave-8-delta-calibration, inputs: [ART-P9-DELTA], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
+      - {sequence: 54, artifact_id: ART-P9-REVALIDATION, concept_id: artifact-concept:program.phase9-revalidation, produced_in: wave-8-delta-calibration, inputs: [ART-P9-DELTA, artifact:program.impact-selection.phase9.v1, ART-P0-AUTH], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
+      - {sequence: 55, artifact_id: ART-P9-CALIBRATION, concept_id: artifact-concept:program.phase9-calibration, produced_in: wave-8-delta-calibration, inputs: [ART-P9-DELTA, ART-P9-REVALIDATION], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
+      - {sequence: 56, artifact_id: ART-P9-LEARNING, concept_id: artifact-concept:program.phase9-learning, produced_in: wave-8-delta-calibration, inputs: [ART-P9-CALIBRATION], predecessor_id: null, predecessor_relation: root, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
+      - {sequence: 57, artifact_id: artifact:program.delta-ledger.phase9.v02, concept_id: artifact-concept:program.delta-ledger, produced_in: wave-8-delta-calibration, inputs: [artifact:program.delta-ledger.phase8.v01, ART-P9-DELTA, artifact:program.impact-selection.phase9.v1, ART-P9-REVALIDATION, ART-P9-CALIBRATION, ART-P9-LEARNING, ART-P8-FREEZE], predecessor_id: artifact:program.delta-ledger.phase8.v01, predecessor_relation: replaces, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
+      - {sequence: 58, artifact_id: artifact:program.gate-ledger.reopened.v07, concept_id: artifact-concept:program.gate-ledger, produced_in: wave-8-delta-calibration, inputs: [artifact:program.gate-ledger.g7.v06, ART-P9-REVALIDATION, artifact:program.delta-ledger.phase9.v02], predecessor_id: artifact:program.gate-ledger.g7.v06, predecessor_relation: replaces, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
+      - {sequence: 59, artifact_id: artifact:program.phase-hash-index.wave8.v08, concept_id: artifact-concept:program.phase-hash-index, produced_in: wave-8-delta-calibration, inputs: [artifact:program.phase-hash-index.phase8.v07, ART-P9-DELTA, ART-P9-REVALIDATION, ART-P9-CALIBRATION, ART-P9-LEARNING, artifact:program.delta-ledger.phase9.v02, artifact:program.gate-ledger.reopened.v07], predecessor_id: artifact:program.phase-hash-index.phase8.v07, predecessor_relation: replaces, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
+      - {sequence: 60, artifact_id: artifact:program.phase-summary-index.wave8.v08, concept_id: artifact-concept:program.phase-summary-index, produced_in: wave-8-delta-calibration, inputs: [artifact:program.phase-summary-index.phase8.v07, artifact:program.phase-hash-index.wave8.v08, artifact:program.gate-ledger.reopened.v07, ART-P9-CALIBRATION, ART-P9-LEARNING], predecessor_id: artifact:program.phase-summary-index.phase8.v07, predecessor_relation: parent, replaced_by: null, lifecycle: active, terminal_stage: phase9-delta}
     final_snapshot_ids:
       - artifact:program.phase-hash-index.phase8.v07
       - artifact:program.phase-summary-index.phase8.v07
@@ -515,7 +588,7 @@ full_program_controls:
       - artifact:program.delta-ledger.phase8.v01
   terminal_sequence:
     - stage: phase8-content
-      artifact_ids: [artifact:program.cluster-split-freeze-ledger.phase8.v1, artifact:program.purpose-delivery.phase8.v1, ART-P8-RELEASE, artifact:program.review-cadence.phase8.v04, artifact:program.delta-ledger.phase8.v01]
+      artifact_ids: [artifact:program.cluster-split-freeze-ledger.phase8.v1, ART-P8-REWRITE, ART-P8-MIGRATION, ART-P8-REPLACEMENT, ART-P8-DUE-DILIGENCE, ART-P8-COMPETITOR, artifact:program.purpose-delivery.phase8.v1, ART-P8-RELEASE, artifact:program.review-cadence.phase8.v04, artifact:program.delta-ledger.phase8.v01]
     - stage: human-approval
       artifact_ids: [ART-P8-APPROVAL]
     - stage: derived-g7
