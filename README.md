@@ -64,6 +64,7 @@ Codex-playbook/
 
 | 文档 | 一句话结论 |
 | --- | --- |
+| [检索结果完整被误当成身份候选完整](anti-patterns/search-completeness-mistaken-for-identity-completeness.md) | 精确总量与完整窗口不能证明名称归一规则允许的竞争者都已召回 |
 | [用 plutil -lint 验证 JSON](anti-patterns/plutil-lint-for-json.md) | `plutil -p` 能读 JSON 不代表 `plutil -lint` 是 JSON lint；JSON 应使用 `jq empty` |
 | [忽略大证据却不提交清单](anti-patterns/ignored-evidence-without-durable-manifest.md) | 二进制证据不进 Git 时，至少提交每个文件的哈希、代码身份和保留限制 |
 | [验证后改代码却不重新取证](anti-patterns/post-validation-code-change-without-revalidation.md) | 任何影响运行时配置的后续修复都会让旧实机证据与最终代码脱节 |
