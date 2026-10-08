@@ -85,6 +85,7 @@ Codex-playbook/
 | [有界时间戳重采样器实验](experiments/2026-07-17-bounded-timestamp-resampler.md) | ±1,000 ppm、60 分钟合成输入得到精确目标帧数，音高与内存上界通过 |
 | [Bluetooth 麦克风 60 分钟时钟实验](experiments/2026-07-17-bluetooth-microphone-clock-drift.md) | 每源 host/video residual 为 0 ms；220 ms 原始端点差不是时钟漂移 gate |
 | [macOS 区域录屏坐标空间实验](experiments/2026-07-20-macos-region-capture-coordinate-spaces.md) | 双屏对照证明 SCK display filter 的 `sourceRect` 是显示器本地点坐标；异常来自 AppKit 验证窗口双重偏移 |
+| [API Factory WhatsApp 验证与 Standby 成本](experiments/2026-10-08-api-factory-whatsapp-standby-validation.md) | 11 个已测号码与历史参照一致；免费配额阻断并发验证，约 0.024 美元用量主要来自运行资源 |
 
 ## 使用方式
 

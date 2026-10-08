@@ -1,0 +1,183 @@
+{
+  "experiment_date": "2026-10-08",
+  "status": "partially_completed",
+  "availability": "原始证据保存在归档持有人的私有本机目录；需授权访问，不随仓库发布，无自动备份保证。",
+  "probe_code_identity": "探针脚本未独立提交 Git，以本清单 SHA-256 记录最终代码；probe.py 的底层异常原因字段是在首次网络失败后补充，不能用于倒推首次失败原因。",
+  "files": [
+    {
+      "evidence_id": "E01",
+      "archive": "private-probe-archive",
+      "source_basename": "samples.json",
+      "purpose": "历史参照与脱敏样本编号映射，包含真实号码，仅保留哈希",
+      "sha256": "e4c7468d728df7996301cd681fb9a2cf78ca889a58e54578a26ce9a57616ad32"
+    },
+    {
+      "evidence_id": "E02",
+      "archive": "private-probe-archive",
+      "source_basename": "actor-before.json",
+      "purpose": "构建、Standby 配置与报价快照",
+      "sha256": "5c02da4f792a519ec8be2850b5245577b6c9ed104f2a7c49e9f20db577cf1398"
+    },
+    {
+      "evidence_id": "E03",
+      "archive": "private-probe-archive",
+      "source_basename": "account-before.json",
+      "purpose": "套餐快照，归档含私有账号关联信息，仅保留哈希",
+      "sha256": "753cee615bfbeac5ee9abf8c45be1260b1c43b311b81ac1b29f0e9028bf8db74"
+    },
+    {
+      "evidence_id": "E04",
+      "archive": "private-probe-archive",
+      "source_basename": "single-positive-result.json",
+      "purpose": "已开通单号响应与耗时",
+      "sha256": "ee68249893b47125b6b4fdd6da2170d498f129ae690bd281c2b6209fa7062ab2"
+    },
+    {
+      "evidence_id": "E05",
+      "archive": "private-probe-archive",
+      "source_basename": "single-negative-result.json",
+      "purpose": "未开通单号响应与耗时",
+      "sha256": "e98050ba160b2dbb7c1d5fe5c93ca519ddbbad88a8a45cbe70a20d75d241bc0f"
+    },
+    {
+      "evidence_id": "E06",
+      "archive": "private-probe-archive",
+      "source_basename": "batch14-result.json",
+      "purpose": "批量 14 个返回 500 与数量限制",
+      "sha256": "a72fb38ef105b567d9614c9f205795250b18a92ecdcc7f2eb6182edef268fdf3"
+    },
+    {
+      "evidence_id": "E07",
+      "archive": "private-probe-archive",
+      "source_basename": "batch10-result.json",
+      "purpose": "首次批量连接失败",
+      "sha256": "451578f53d4ca3c36098ade430574300f89ee299518a92269a4ee117a8634a7a"
+    },
+    {
+      "evidence_id": "E08",
+      "archive": "private-probe-archive",
+      "source_basename": "batch4-result.json",
+      "purpose": "第二次批量连接失败及底层 TLS 异常",
+      "sha256": "d1233010e4332c8b3ddf5137143707bb42610cab8a95bdf41f9e9f2c467c6142"
+    },
+    {
+      "evidence_id": "E09",
+      "archive": "private-probe-archive",
+      "source_basename": "recovery-dataset.json",
+      "purpose": "连接失败后的结果集核对",
+      "sha256": "cbe493c3456ce246e64baedda24daf44d1a0737b37a57a4cf2104407f5e8058c"
+    },
+    {
+      "evidence_id": "E10",
+      "archive": "private-probe-archive",
+      "source_basename": "diagnostic-log.json",
+      "purpose": "连接失败后的服务端诊断日志",
+      "sha256": "c9fc9d10abf9a4b7a959529219c00b32ced468b029482578c8adf95321ecc929"
+    },
+    {
+      "evidence_id": "E11",
+      "archive": "private-probe-archive",
+      "source_basename": "batch10-curl-result.json",
+      "purpose": "curl 批量 10 个成功响应",
+      "sha256": "15e1d6eb778c7b821960510c8217e6fc2a1050b2b6cb638a13d6bc7b6f9c818c"
+    },
+    {
+      "evidence_id": "E12",
+      "archive": "private-probe-archive",
+      "source_basename": "batch4-curl-result.json",
+      "purpose": "curl 批量 4 个触发免费限流",
+      "sha256": "c594d4c14b22a3adf8eba08fe4113a97c5d84b823ff6ead6a3d9d0f4b55a2aad"
+    },
+    {
+      "evidence_id": "E13",
+      "archive": "private-probe-archive",
+      "source_basename": "final-log-1.json",
+      "purpose": "第二实例最终日志，含 429 来源",
+      "sha256": "a12cc089a0677d1082b784af3026e0b3c34e890e64196f54115b4df6cedeafda"
+    },
+    {
+      "evidence_id": "E14",
+      "archive": "private-probe-archive",
+      "source_basename": "final-log-2.json",
+      "purpose": "第一实例最终日志",
+      "sha256": "bba6bae56207db74d78e577d1b0738b4915dcdfaac07a18471183ab24f9576ac"
+    },
+    {
+      "evidence_id": "E15",
+      "archive": "private-probe-archive",
+      "source_basename": "final-dataset-1.json",
+      "purpose": "第二实例结果集，10 条",
+      "sha256": "b18130313fdfa6d31b1667934481d0910599a81ea19b271aadbe4c71587b04ce"
+    },
+    {
+      "evidence_id": "E16",
+      "archive": "private-probe-archive",
+      "source_basename": "final-dataset-2.json",
+      "purpose": "第一实例结果集，2 条",
+      "sha256": "3169028c58ada9fc4a126b1da2ad07f222f44c1b7de0ae5208e494b1945d67e2"
+    },
+    {
+      "evidence_id": "E17",
+      "archive": "private-probe-archive",
+      "source_basename": "settled-run-1.json",
+      "purpose": "第二实例稳定费用、计费事件与终态",
+      "sha256": "8310e2e47fef67532c7a0c92f6bbabffd4b8e273cc8ede0c1ca7b8bb11dc9a33"
+    },
+    {
+      "evidence_id": "E18",
+      "archive": "private-probe-archive",
+      "source_basename": "settled-run-2.json",
+      "purpose": "第一实例稳定费用、计费事件与终态",
+      "sha256": "57bb2e225283dddbfea6f6c61157ea2255fbe14720a4c90ccce928c1c78f7a92"
+    },
+    {
+      "evidence_id": "E19",
+      "archive": "private-probe-archive",
+      "source_basename": "usage-before.json",
+      "purpose": "测试前账号用量",
+      "sha256": "bdd9240fe929a40a438af10ad002763db06975c111e738f24a74a6de27bb28f4"
+    },
+    {
+      "evidence_id": "E20",
+      "archive": "private-probe-archive",
+      "source_basename": "usage-settled.json",
+      "purpose": "测试后账号用量",
+      "sha256": "63d6b4128273bbfaf6b2cb159f636ace478e7b6c9470585284eb1dc353bc9e59"
+    },
+    {
+      "evidence_id": "E21",
+      "archive": "private-probe-archive",
+      "source_basename": "probe.py",
+      "purpose": "认证读取、HTTP 请求及初始核对脚本的最终版本",
+      "sha256": "3fe9f42dca2f5a1cf5a24297a28e194f258d2148bcc89f3ef8b177d51266ad60"
+    },
+    {
+      "evidence_id": "E22",
+      "archive": "private-probe-archive",
+      "source_basename": "test_cases.py",
+      "purpose": "测试用例与结果摘要脚本",
+      "sha256": "60968d9f7888cd8be9cba52cc703b1ee906fe0a002857a15ae1c8afe169d010f"
+    },
+    {
+      "evidence_id": "E23",
+      "archive": "private-probe-archive",
+      "source_basename": "curl_client.py",
+      "purpose": "curl 请求适配脚本",
+      "sha256": "2e8b8265b327c6952132345769dc7ad795747687dad5eeed30949a39b9a6995e"
+    },
+    {
+      "evidence_id": "E24",
+      "archive": "private-delivery-archive",
+      "source_basename": "api-factory-test-report.md",
+      "purpose": "完整私有交付报告",
+      "sha256": "2187b38861532374c8a8430cd8c72f16fa4aa64faec8ec6c5c777ea021a273ea"
+    },
+    {
+      "evidence_id": "E25",
+      "archive": "private-delivery-archive",
+      "source_basename": "api-factory-test-summary.json",
+      "purpose": "机器摘要，含私有路径，未直接发布",
+      "sha256": "850f3fdfba6bf1588cbfe9271fe7cb07015dcb19020940f2eb5446e400e2bb0a"
+    }
+  ]
+}
