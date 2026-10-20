@@ -1,0 +1,9 @@
+{
+  "projection": "Original version and replay assertions retained; real shot and operation identifiers omitted",
+  "returned_version": 2,
+  "current_version": 1,
+  "idempotent": true,
+  "asset_mapping_preserved": 5,
+  "version_count": 2,
+  "paid_generation_calls": 0
+}

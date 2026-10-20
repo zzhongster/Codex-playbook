@@ -1,0 +1,259 @@
+{
+  "schema_version": 1,
+  "project_id": "Synthetic-media-handoff-case",
+  "date": "2026-10-20",
+  "evidence_maturity": "project-validated",
+  "components": [
+    "ArcReel",
+    "LibTV",
+    "Codex"
+  ],
+  "source_commit": "93ef87c9ee56aba7d1a881b9bd102b792d2d939c",
+  "upstream_commit": "0aac876ccdc4f9031daa6a6fedaa82570710ccb4",
+  "upstream_image_digest": "sha256:c745f246aca073707081f0173c7ed46ab6617732ed05bc7b0ce954ad2ec0daa3",
+  "source_repository_availability": "Local repository without a configured public remote at time of archival",
+  "retention_limits": [
+    "Original source, screenshots and full reports remain in the original local project repository; not copied as a source bundle into this playbook.",
+    "Fresh clones contain the evidence projections below, not original cloud resources, OAuth state, screenshots or implementation source.",
+    "SHA-256 pins content identity; it does not guarantee future availability or independent reproduction.",
+    "Documentation-time rerun observed 13 host tests and 17 isolated native tests passing; full rerun transcripts were not archived.",
+    "No AI generation, Agent creation or paid export was invoked; this is not an account-wide billing audit."
+  ],
+  "tests_observed_passing": {
+    "host": 13,
+    "isolated_native_service": 17
+  },
+  "archived_evidence": [
+    {
+      "file": "cloud-transfer-audit.json",
+      "sha256": "cb76a86ac087b6d06038f68ba18fa5da333d0b68fc69d8540f7d42dd47d13542",
+      "bytes": 1756
+    },
+    {
+      "file": "live-safety.json",
+      "sha256": "229ac66c3352dd75ce3ad32dd7832c0ba9c53a4fea9f43cc63d695232774c8bb",
+      "bytes": 455
+    },
+    {
+      "file": "restart-results.json",
+      "sha256": "86b01965997ee7bcb7dd4ec935654df5cfc7fe16231fd4dc97a516fcb0561206",
+      "bytes": 270
+    },
+    {
+      "file": "ui-results.json",
+      "sha256": "b328d748694506201ca0df8eac73739f5dbbba294495eb428e9d20c88dc380a5",
+      "bytes": 486
+    }
+  ],
+  "source_files": [
+    {
+      "sha256": "96ef493a529b8849546510ddcad93e2133b95337b2363af3c481dbd66c985e00",
+      "bytes": 1892,
+      "availability": "original-local-project-only",
+      "directory": "artifacts/handoff",
+      "file_stem": "cloud-transfer-audit",
+      "file_extension": "json"
+    },
+    {
+      "sha256": "5df1347e6e2356611569f48938d93142f4c788557bad45e6e9242ad5cce8be38",
+      "bytes": 454,
+      "availability": "original-local-project-only",
+      "directory": "artifacts/handoff",
+      "file_stem": "live-safety",
+      "file_extension": "json"
+    },
+    {
+      "sha256": "35c207025445c6d528119da8803416476071a85cd0d1750fe0c26d5f2fae1a3c",
+      "bytes": 231,
+      "availability": "original-local-project-only",
+      "directory": "artifacts/handoff",
+      "file_stem": "mcp-registration",
+      "file_extension": "json"
+    },
+    {
+      "sha256": "b1707860c2cbebe15c7b12b9edefe2f3a66e797b34c438e7cce8608c14be2ed0",
+      "bytes": 426,
+      "availability": "original-local-project-only",
+      "directory": "artifacts/handoff",
+      "file_stem": "restart-results",
+      "file_extension": "json"
+    },
+    {
+      "sha256": "bc9aae76657010867137e5fb57243564bacd869de2618f8bbfeeec3405dd4e63",
+      "bytes": 719,
+      "availability": "original-local-project-only",
+      "directory": "artifacts/handoff",
+      "file_stem": "ui-results",
+      "file_extension": "json"
+    },
+    {
+      "sha256": "23653024b64ab243dc65ebb512e7da75b169792fbbe70ebe8d8e87349c615d67",
+      "bytes": 209501,
+      "availability": "original-local-project-only",
+      "directory": "artifacts/handoff",
+      "file_stem": "episode-before",
+      "file_extension": "png"
+    },
+    {
+      "sha256": "70045fe9dd7d634f4fa16c2a18537d9069e3d68fff247eb55e67770fd11ab986",
+      "bytes": 238353,
+      "availability": "original-local-project-only",
+      "directory": "artifacts/handoff",
+      "file_stem": "video-history-v1",
+      "file_extension": "png"
+    },
+    {
+      "sha256": "0f57bd24e25b3123302e3ba110aac2235a58dda54214fcede84e24d98327c5e0",
+      "bytes": 220765,
+      "availability": "original-local-project-only",
+      "directory": "artifacts/handoff",
+      "file_stem": "video-history-v2",
+      "file_extension": "png"
+    },
+    {
+      "sha256": "9533f350603303a3880e548338a9f55f1f20de5443b439780df5a9f98f3c3284",
+      "bytes": 222495,
+      "availability": "original-local-project-only",
+      "directory": "artifacts/handoff",
+      "file_stem": "video-v1-restored",
+      "file_extension": "png"
+    },
+    {
+      "sha256": "fad558769285e636fd198ed41ec2a4d5351e1d69b24e7320853dd96013932a4d",
+      "bytes": 222175,
+      "availability": "original-local-project-only",
+      "directory": "artifacts/handoff",
+      "file_stem": "video-v2-playing",
+      "file_extension": "png"
+    },
+    {
+      "sha256": "d0ebce6c841b375fd874c6a0b6ca892cbd66c561f26037a0599b9bb406b41f1b",
+      "bytes": 20454,
+      "availability": "original-local-project-only",
+      "directory": "tests",
+      "file_stem": "test_external_import",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "a292738fc7386a21572d391aed602925ae1ae8fdb1a4c648b6648281e1eaa243",
+      "bytes": 12597,
+      "availability": "original-local-project-only",
+      "directory": "tests",
+      "file_stem": "test_handoff",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "e6dd0844cc238941426829918576ef91cd36233b956f8bad733992199b80e7cd",
+      "bytes": 63,
+      "availability": "original-local-project-only",
+      "directory": "handoff",
+      "file_stem": "__init__",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "c75cffa2027ef4df325b0142354bfc3bb0dd254bcd2f82407b7b90acc1fa193e",
+      "bytes": 1374,
+      "availability": "original-local-project-only",
+      "directory": "handoff",
+      "file_stem": "arcreel_entrypoint",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "d587b1ff04400cbed6c20e5a080ee4946d1b64f6ad6b9b1f197e7b22a63a724a",
+      "bytes": 8838,
+      "availability": "original-local-project-only",
+      "directory": "handoff",
+      "file_stem": "arcreel_routes",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "6dbda7292b19fac8a15b9c125a882228c9d60f8311daad0ddd6a46eb0627168d",
+      "bytes": 29081,
+      "availability": "original-local-project-only",
+      "directory": "handoff",
+      "file_stem": "arcreel_service",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "b3feb84e3d9e6be566eb52ffc7b17070de15cab8044416d62f53631241669652",
+      "bytes": 14271,
+      "availability": "original-local-project-only",
+      "directory": "handoff",
+      "file_stem": "bridge",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "3af34b3c6f11a7ba3b7cfcf6a816263c46a64deee86e284728ba63233894d212",
+      "bytes": 2943,
+      "availability": "original-local-project-only",
+      "directory": "handoff",
+      "file_stem": "cli",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "f00400085569c0330bd3d5a8fdcb3b6a9d01de22fdeee5980a5d51319ec43ef3",
+      "bytes": 5639,
+      "availability": "original-local-project-only",
+      "directory": "handoff",
+      "file_stem": "codex_transport",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "e8358570da5a28a973fcc78ceccdf3fcbe9df3d178a22a218f13462f5dc916d9",
+      "bytes": 628,
+      "availability": "original-local-project-only",
+      "directory": "handoff",
+      "file_stem": "common",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "1c4c9752b2e1496a7f1e307d6a55b57486f5efe42bee7714551f724dba66f4d1",
+      "bytes": 8555,
+      "availability": "original-local-project-only",
+      "directory": "handoff",
+      "file_stem": "libtv",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "cd9b7e1772f2da67b04eee705963b7d94c2ad00ecf48965c11e9964f7735ed64",
+      "bytes": 3853,
+      "availability": "original-local-project-only",
+      "directory": "handoff",
+      "file_stem": "mcp_server",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "0afcfa39f0f5160d551fe311030293445f135b24dc244d3f2527cd8574d6e4ac",
+      "bytes": 2952,
+      "availability": "original-local-project-only",
+      "directory": "handoff",
+      "file_stem": "store",
+      "file_extension": "py"
+    },
+    {
+      "sha256": "1122000c7516c6de313fa208ae7f93a414adbd2930507a4bc2b92f3569355ad0",
+      "bytes": 5847,
+      "availability": "original-local-project-only",
+      "directory": "fixtures/assets",
+      "file_stem": "clip-v1",
+      "file_extension": "mp4"
+    },
+    {
+      "sha256": "bccbf4f14a89721b09f07765ac7e4bff35bdecf3ca9617398687adc51f19392c",
+      "bytes": 6479,
+      "availability": "original-local-project-only",
+      "directory": "fixtures/assets",
+      "file_stem": "clip-v2",
+      "file_extension": "mp4"
+    },
+    {
+      "sha256": "2c859f7219094c4168f53aee553efc24ab5ec5cb074f0301854dbb9f27d434bb",
+      "bytes": 1002,
+      "availability": "original-local-project-only",
+      "directory": "deploy/arcreel",
+      "file_stem": "compose",
+      "file_extension": "yaml"
+    }
+  ],
+  "source_path_encoding": "Join directory with file_stem, a dot, and file_extension to locate each original file"
+}

@@ -1,0 +1,22 @@
+{
+  "results": [
+    {
+      "test": "two_independent_clients_replay_same_result",
+      "passed": true
+    },
+    {
+      "test": "changed_current_selection_rejects_stale_import",
+      "passed": true
+    },
+    {
+      "test": "another_codex_changes_shot_refuses_overwrite",
+      "passed": true
+    },
+    {
+      "test": "history_and_current_preserved_after_conflicts",
+      "passed": true
+    }
+  ],
+  "video_versions": 2,
+  "generation_calls": 0
+}

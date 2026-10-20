@@ -60,6 +60,9 @@ Codex-playbook/
 | [rename 未固定文件身份](anti-patterns/atomic-rename-without-pinned-file-identity.md) | 原子名称切换之外，还要防目录、临时文件和目标 inode 被替换 |
 | [错误脱敏抹掉操作诊断](anti-patterns/error-redaction-destroys-operational-diagnostics.md) | 只删除敏感值，保留 operation、status、domain/code |
 | [用最后调用和预算上限代替异步任务事实](anti-patterns/async-job-facts-derived-from-latest-attempt-and-budget.md) | 完成证据按任务校验一致性，费用逐次留证并按终态可计费对象与冻结单价核对；尾随失败不覆盖终态 |
+| [回传幂等身份绑在准备或聊天上](anti-patterns/preparation-scoped-media-import-idempotency.md) | 结果身份跨准备和重启稳定；接收端同事务保存回执，未知提交与已拒绝后的明确采用分开 |
+| [外部版本可恢复却不能原生播放](anti-patterns/external-media-restore-without-native-playback-provenance.md) | 导入、恢复与播放分别验收；保留真实外部来源，不伪造模型执行依据 |
+| [镜头锁被当成全部多代理并发边界](anti-patterns/shot-lock-as-complete-multi-agent-coordination.md) | 镜头、共享缓存和正式版本分别守边界；明确镜头归属，锁不能替代条件提交 |
 
 ### 测试与证据工程
 

@@ -1,0 +1,75 @@
+{
+  "projection": "Tool counts and media hashes retained; real node and shot identifiers omitted; credential-related table counts omitted",
+  "libtv_calls": [
+    {
+      "tool": "create_project",
+      "calls": 1
+    },
+    {
+      "tool": "doctor",
+      "calls": 1
+    },
+    {
+      "tool": "inspect_media",
+      "calls": 3
+    },
+    {
+      "tool": "upload_complete",
+      "calls": 5
+    },
+    {
+      "tool": "upload_media",
+      "calls": 11
+    },
+    {
+      "tool": "upload_ticket",
+      "calls": 5
+    }
+  ],
+  "generation_calls": 0,
+  "arcreel_counts": {
+    "tasks": 0,
+    "batches": 0,
+    "batch_tasks": 0,
+    "api_calls": 0
+  },
+  "uploads": [
+    {
+      "media_type": "video",
+      "sha256": "bccbf4f14a89721b09f07765ac7e4bff35bdecf3ca9617398687adc51f19392c",
+      "status": "completed"
+    },
+    {
+      "media_type": "image",
+      "sha256": "af332db5592d9e50f53d8dd87e9e62a46aff4a8e22e965451d7eeac6f0260e8e",
+      "status": "completed"
+    },
+    {
+      "media_type": "image",
+      "sha256": "f9f65514012893467e7c055078af93fde136a434f760d7a86bc8dbc96dfa0a57",
+      "status": "completed"
+    },
+    {
+      "media_type": "image",
+      "sha256": "42499eff77e4cb026f81b2820ba3417f3e95bc4e663cef57bb9c9dbe8d016c5d",
+      "status": "completed"
+    },
+    {
+      "media_type": "video",
+      "sha256": "1122000c7516c6de313fa208ae7f93a414adbd2930507a4bc2b92f3569355ad0",
+      "status": "completed"
+    }
+  ],
+  "returned": [
+    {
+      "version": 2,
+      "sha256": "bccbf4f14a89721b09f07765ac7e4bff35bdecf3ca9617398687adc51f19392c",
+      "matches_fixture": true
+    },
+    {
+      "version": 1,
+      "sha256": "1122000c7516c6de313fa208ae7f93a414adbd2930507a4bc2b92f3569355ad0",
+      "matches_fixture": true
+    }
+  ]
+}

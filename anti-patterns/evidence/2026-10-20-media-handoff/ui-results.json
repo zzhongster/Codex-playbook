@@ -1,0 +1,20 @@
+{
+  "projection": "Original assertions retained; project-specific request paths omitted",
+  "results": [
+    {
+      "test": "v2_native_player_real_keyboard_playback",
+      "passed": true,
+      "duration": 3,
+      "currentTime": 0.059514,
+      "readyState": 4
+    },
+    {
+      "test": "native_ui_restore_v1_reload_play_preserve_v2",
+      "passed": true,
+      "duration_seconds": 2
+    }
+  ],
+  "mutation_count": 3,
+  "blocked_generation_attempts": [],
+  "generation_calls": 0
+}
